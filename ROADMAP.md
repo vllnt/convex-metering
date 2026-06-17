@@ -22,6 +22,21 @@ Idempotent usage records + per-period rollups, shipped at 0.1.0 (canary).
 - `ship-metered-records.6` — `done` — 100% E2E coverage via the `example/` host harness (happy + adversarial); lint/typecheck/build green.
 - `ship-metered-records.7` — `done` — standard repo: CI, canary `publish.yml`, docs set, `.claude/rules`, repo hardening.
 
+## harden-billing-correctness — `done`
+
+Implemented from the 2026-06-17 multi-perspective review (5 reviewers). Shipped at 0.1.0 (canary),
+100% coverage maintained.
+
+- `harden-billing-correctness.1` — `done` — **decoupled dedup**: idempotency keys live in a dedicated `seen` table (not `records`), so `pruneRecords` can no longer re-open a duplicate and double-count the billable rollup; `pruneSeen` retains keys on an independent cutoff.
+- `harden-billing-correctness.2` — `done` — **`closePeriod` + `closedAt`**: freeze a billed period (`PERIOD_CLOSED` on later writes) so a late event can't restate the invoiced number.
+- `harden-billing-correctness.3` — `done` — **`adjust`** (signed sum-only corrections, never below zero, idempotent) — refunds/credits/voids without nuking the period.
+- `harden-billing-correctness.4` — `done` — **`recordWithLimit`** (atomic check-and-record, closes the read-then-write overage race); **`AGGREGATION_LOCKED`** (no mid-flight aggregation switch); **`IDEMPOTENCY_NOT_SUPPORTED`** (no idempotency on gauges).
+- `harden-billing-correctness.5` — `done` — **lifecycle + GDPR**: batched `reset`, `eraseSubject`, `listMeters` / `listSubjectUsage` discovery, `verify` (reconcile rollup vs records), optional `actorRef` audit field; integer-minor-unit precision documented.
+
+> Deferred to later phases (design-sized): the `./react` `useUsage` hook (`reactive-usage-surface`),
+> an opt-in calendar-agnostic `./period` helper, a self-driving retention cron, and sharded-counter
+> write-sharding for high-throughput rollups (`retention-and-scale`).
+
 ## reactive-usage-surface — `planned`
 
 Optional `./react` tooling, decided by the front-tooling analysis once a real consumer needs a live
@@ -36,7 +51,7 @@ Make metered usage easy to bill from, without owning pricing.
 
 - `billing-integration.1` — `planned` — a documented pattern / helper for joining a period's rollup to a host price (the host owns rates).
 - `billing-integration.2` — `planned` — evaluate composing `@convex-dev/aggregate` for cross-subject/period totals at scale (fleet-wide usage reporting) vs per-subject rollups.
-- `billing-integration.3` — `planned` — optional period-close / freeze to snapshot a billed period immutably.
+- `billing-integration.3` — `done` — period-close / freeze to snapshot a billed period immutably (shipped as `closePeriod`; see `harden-billing-correctness.2`).
 
 ## retention-and-scale — `planned`
 
