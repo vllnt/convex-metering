@@ -93,6 +93,7 @@
     "convex-component",
     "metering",
     "usage-based-billing",
+    "usage-metering",
     "usage-records"
   ]
 }
