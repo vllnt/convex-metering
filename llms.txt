@@ -1,0 +1,36 @@
+# @vllnt/convex-metering
+
+> Metered usage records — idempotent usage events rolled up per billing period, as a Convex component
+
+`@vllnt/convex-metering` is a publishable Convex component. It targets `convex@^1.41.0`. It stores
+three sandboxed tables — `meters` (the definition: an `aggregation` rule of `sum`/`max`/`last` plus a
+display `unit`, unique per `(scope, key)`), `records` (append-only raw usage events, the audit trail
+and idempotency source), and `rollups` (the materialized per-`(meter, subject, period)` aggregate,
+the O(1) read for billing). `defineMeter` registers a meter; `record` writes a usage event, folds it
+into the period rollup per the meter's aggregation, and is idempotent when given an `idempotencyKey`
+(a retry returns `{ recorded: false, reason: "duplicate" }`). `usage` and `listUsage` read rollups;
+`reset` clears one `(meter, subject, period)`; `pruneRecords` deletes raw records older than a
+required cutoff while leaving rollups — the billable truth — intact. `period` is an opaque host
+string (the component never parses dates); time is server-sourced. The component owns accurate,
+idempotent usage accounting; the host owns the meter meaning, the opaque `subjectRef`, the period
+bucketing, pricing (billed in the host's own tables), retention, and auth.
+
+## Docs
+
+- [README](README.md): Project overview, installation, usage examples, architecture
+- [API Reference](docs/API.md): Public class methods, return shapes, input validation, error codes
+- [Changelog](CHANGELOG.md): Version history and release notes
+- [Contributing](CONTRIBUTING.md): Development setup, validation commands, release workflow
+
+## Examples
+
+- [Example component wrapper](example/convex/example.ts): Host-app wrapper functions
+- [Example tests](example/convex/example.test.ts): End-to-end usage coverage with `convex-test`
+
+## Optional
+
+- [AGENTS](AGENTS.md): Canonical agent instructions for this repository
+- [Security Policy](SECURITY.md): Vulnerability reporting policy
+- [Code of Conduct](CODE_OF_CONDUCT.md): Community participation guidelines
+- [License](LICENSE): MIT license
+- [Full source bundle](llms-full.txt): Aggregated README, changelog, API docs, and key source files
