@@ -11,7 +11,7 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 # @vllnt/convex-metering
 
 Metered usage records — idempotent usage events rolled up per billing period, as a Convex component.
-It follows the vllnt Component Standard (see the `convex-components` hub
+It follows the vllnt Component Standard (see the `oss-packages` hub
 `.claude/rules/component-standard.md`).
 
 ## Architecture
@@ -24,82 +24,93 @@ src/
 │   ├── index.ts           # Metering class (consumer-facing API)
 │   └── types.ts           # public TypeScript interfaces
 └── component/
-    ├── schema.ts           # sandboxed tables: meters, records, rollups
+    ├── schema.ts           # sandboxed tables: meters, records, seen, rollups
     ├── convex.config.ts    # defineComponent("metering")
-    ├── mutations.ts        # defineMeter, record, reset, pruneRecords
-    ├── queries.ts          # getMeter, usage, listUsage
-    └── validators.ts       # shared validators (aggregation, recordResult, …)
+    ├── mutations.ts        # defineMeter, record, recordWithLimit, adjust, closePeriod,
+    │                       #   reset, eraseSubject, pruneRecords, pruneSeen
+    ├── queries.ts          # getMeter, listMeters, usage, listUsage, listSubjectUsage, verify
+    └── validators.ts       # shared validators (aggregation, recordResult, limitResult, …)
 ```
 
 Sandboxed tables, no host tables touched:
 
-- `meters` — the definition (`aggregation` rule + display `unit`), unique per `(scope, key)`.
-- `records` — append-only raw usage events (the audit trail + the idempotency source).
-- `rollups` — the materialized per-`(meter, subject, period)` aggregate; the O(1) read for billing.
+- `meters`  — the definition (`aggregation` rule + display `unit`), unique per `(scope, key)`.
+- `records` — append-only raw usage events (the audit trail; carries optional `actorRef`).
+- `seen`    — the idempotency-key ledger, **separate from `records`** so pruning audit rows never
+  re-opens a duplicate.
+- `rollups` — the materialized per-`(meter, subject, period)` aggregate; the O(1) read and the
+  billable truth (never pruned). `closedAt` freezes a billed period.
 
 ## Ownership boundary
 
 **Component owns:**
 
-- The three tables — meter definitions, raw records, materialized rollups
-- The aggregation rule per meter (`sum` | `max` | `last`) and the rollup math
-- Idempotent recording — a repeat `record` with the same `idempotencyKey` is a no-op
-- Period-bounded accounting — each `(meter, subject, period)` rolls up independently
-- Validation (`INVALID_QUANTITY`, `METER_NOT_FOUND`) and server-sourced time
+- The four tables — meter definitions, raw records, the `seen` dedup ledger, materialized rollups
+- The aggregation rule per meter (`sum` | `max` | `last`, locked once usage exists) and the rollup math
+- Idempotent recording — dedup against `seen` survives `pruneRecords`
+- Period-bounded accounting + period freeze (`closePeriod`); corrections (`adjust`); atomic
+  enforcement (`recordWithLimit`); reconciliation (`verify`)
+- Lifecycle — batched `reset`, GDPR `eraseSubject`, `pruneRecords` + `pruneSeen`
+- Validation + server-sourced time
 
 **Host owns:**
 
 - The meter keys and what a unit means (a request, a GB, a seat)
-- `subjectRef` — an opaque identity string; the component never assumes its shape or source
-- `period` — an opaque bucket string (`"2026-06"`, `"2026-W24"`, `"all"`); the host owns the
-  calendar and timezone, so the component never parses dates
-- **Pricing** — turning a period's usage into a bill happens in the host's own tables at the host's
-  rate (see `example/convex/example.ts`)
-- Retention — the host drives `pruneRecords` with its own cutoff; rollups are never pruned
-- Auth and authorization — who may define meters, record usage, reset, or read
+- `subjectRef` / `actorRef` — opaque identity strings; the component never assumes their shape
+- `period` — an opaque bucket string; the host owns the calendar/timezone, the component never parses dates
+- **Pricing** — turning a period's usage into a bill happens in the host's own tables at the host's rate
+- **Precision** — record integer minor-units (bytes, mills) for exact money; `sum` accumulates in f64
+- Retention — driving `pruneRecords`/`pruneSeen` with cutoffs; rollups are never pruned
+- Auth and authorization — who may define, record, adjust, close, reset, erase, or read
 
-**Auth:** the component is completely auth-agnostic. The host resolves identity, decides access, and
-passes opaque `subjectRef` / `scope` / `period` strings.
+**Auth:** the component is completely auth-agnostic; the host gates every call. `subjectRef` is not
+authenticated — a caller can read/write any subject's usage, so the host MUST verify ownership.
 
 ## Key design decisions
 
-- **Records + rollups split:** raw `records` are the append-only audit trail and the idempotency
-  source; `rollups` are the materialized per-period aggregate read in O(1) for billing and limit
-  checks. The rollup is the **billable truth** and is never pruned; raw records may be pruned by the
-  host once they age past its retention window.
+- **Idempotency is decoupled from record pruning (`seen` table):** dedup is checked against a dedicated
+  `seen` ledger, not `records`, so `pruneRecords` deleting raw audit rows can never re-open a
+  duplicate and double-count the billable rollup. `seen` has its own retention via `pruneSeen` — set
+  its cutoff older than your longest delivery/retry window. (Earlier docs implied prune was
+  consequence-free; with a shared dedup-on-records table it wasn't — this fixes it.)
 
-- **Idempotent `record`:** an optional `idempotencyKey` makes a retried event a safe no-op
-  (`{ recorded: false, reason: "duplicate" }`) — at-least-once delivery (webhooks, retried
-  mutations) never double-counts. Without a key, every call is a distinct event.
+- **Period freeze (`closePeriod`):** marks a `(meter, subject, period)` rollup `closedAt`; `record` /
+  `adjust` / `recordWithLimit` into a frozen period throw `PERIOD_CLOSED`, so a late event can't
+  silently restate an already-invoiced number.
 
-- **Aggregation is per-meter, applied on write:** `sum` accumulates, `max` keeps the peak, `last`
-  overwrites — fixed at `defineMeter`. The fold is a pure function (`applyAggregation`); the first
-  event of a period seeds the rollup with its own quantity, later events fold in.
+- **Signed corrections (`adjust`, sum-only):** refunds/credits/voids post a signed `delta` (may be
+  negative) that appends a reversing record and re-folds. The rollup stays equal to the sum of its
+  records and never goes negative (`ADJUST_BELOW_ZERO` otherwise) — so `verify` reconciles.
 
-- **`period` is a host-supplied opaque string:** the component never parses dates or assumes a
-  calendar/timezone — the host buckets (`"2026-06"`, `"2026-W24"`, `"all"`) and passes the string in.
-  This keeps the component locale- and calendar-agnostic.
+- **Atomic enforcement (`recordWithLimit`):** checks the projected rollup against a `limit` and records
+  in one serializable mutation, closing the read-then-write race a host-side `usage()` → `record()`
+  leaves open. Returns `limit_exceeded` without recording when it would cross.
 
-- **Metering is not a gate, a balance, or a raw aggregate:** it is accurate, idempotent usage
-  accounting with period boundaries — distinct from a rate-limiter (which *blocks*), a wallet (a
-  *spendable* balance), and a generic counter (no period model or idempotency). Those compose around
-  it; this owns the metered record.
+- **Aggregation locked once usage exists (`AGGREGATION_LOCKED`):** `unit` may change; `aggregation`
+  may not (switching `sum`→`max` mid-flight would leave the rollup computed under two rules). Define a
+  new meter key instead.
 
-- **Explicit meter definition:** `record` throws `METER_NOT_FOUND` if the meter was never defined —
-  the meter's aggregation rule must be known before usage lands, so there is no silent auto-create.
+- **Counters vs gauges:** `idempotencyKey` is meaningful only for `sum` counters; on a `max`/`last`
+  gauge it throws `IDEMPOTENCY_NOT_SUPPORTED` (dedup-skipping a gauge reading is incoherent).
 
-- **Safe prune:** `pruneRecords` requires an explicit `before` cutoff (no default-to-now), so a
-  caller cannot wipe all records by accident; rollups are untouched. Bounded + self-rescheduling.
+- **Records + rollups split:** raw `records` are the append-only audit trail; `rollups` are the O(1)
+  per-period aggregate and the billable truth (never pruned). `verify` recomputes the rollup from the
+  surviving records and flags drift (`consistent`, trustworthy only when `recordsRemaining > 0`).
 
-- **Fully typed, zero `v.any()`:** quantities, periods, units, and refs are all concrete types —
-  there is no opaque host payload, so the component needs no `jsonValue` escape hatch.
+- **`period` is a host-supplied opaque string:** the component never parses dates — locale/calendar-agnostic.
 
-- **Server-sourced time:** `recordedAt` and rollup timestamps are read from the server clock; no API
-  accepts a caller-supplied timestamp.
+- **Lifecycle is bounded + self-rescheduling:** `reset` (one meter/period) and `eraseSubject` (GDPR,
+  all meters/periods for a subject) delete in batches and self-reschedule; `reset` keeps the subject's
+  `seen` keys so a late replay stays deduped rather than re-counting.
 
-- **Backend-only at 0.1.0 (no `./react` entry):** usage is recorded server-side. A reactive
-  `useUsage` read surface (a live "8,200 / 10,000 this period" meter) is a real future addition —
-  deferred until a first consumer asks for it, per the front-tooling analysis in the README.
+- **Metering is not a gate, a balance, or a raw aggregate** — distinct from a rate-limiter, a wallet,
+  and a generic counter; those compose around it.
+
+- **Fully typed, zero `v.any()`; server-sourced time.**
+
+- **Backend-only at 0.1.0 (no `./react` entry):** a reactive `useUsage` surface (a live "8,200 /
+  10,000 this period" meter, with `closed`/`remaining`) is deferred until a first consumer asks, per
+  the front-tooling analysis in the README.
 
 ## Conventions
 
@@ -112,7 +123,7 @@ passes opaque `subjectRef` / `scope` / `period` strings.
 ## Project rules
 
 The universal vllnt engineering rules ship in `.claude/rules/` — **synced from the
-`convex-components` hub** (single source; edit them there, not here):
+`oss-packages` hub** (single source; edit them there, not here):
 
 | Rule | Covers |
 |------|--------|
@@ -123,18 +134,18 @@ The universal vllnt engineering rules ship in `.claude/rules/` — **synced from
 | [`docs-sync.md`](.claude/rules/docs-sync.md) | **BLOCKING** docs stay current with every commit |
 
 The full BLOCKING Component Standard (file/CI/docs/coverage contract) and fleet governance live in
-the hub (`convex-components` `.claude/rules/component-standard.md`) — not duplicated into this repo.
+the hub (`oss-packages` `.claude/rules/component-standard.md`) — not duplicated into this repo.
 
 ## Docs sync
 
 | Changed | Update in the same commit |
 |---------|--------------------------|
-| Public API (defineMeter/record/reset/pruneRecords/getMeter/usage/listUsage signatures) | README API Reference table, `docs/API.md`, `llms.txt` context, regenerate `llms-full.txt` |
-| Config options / defaults (`defaultScope`, `defaultPeriod`, aggregation) | README API Reference, `docs/API.md` constructor section |
+| Public API (defineMeter/record/recordWithLimit/adjust/closePeriod/reset/eraseSubject/prune*/getMeter/listMeters/usage/listUsage/listSubjectUsage/verify) | README API Reference table, `docs/API.md`, `llms.txt` context, regenerate `llms-full.txt` |
+| Config options / defaults (`defaultScope`, `defaultPeriod`, aggregation, batch) | README API Reference, `docs/API.md` constructor section |
 | Schema / tables / indexes | this file (Architecture), README Architecture, `docs/API.md` |
 | Error codes | `docs/API.md` → `## Error codes` table |
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
-| Aggregation / idempotency / rollup semantics | `docs/API.md`, Key design decisions above |
+| Aggregation / idempotency / period / adjust / rollup semantics | `docs/API.md`, Key design decisions above |
 | Any change | `pnpm generate:llms` to keep `llms-full.txt` current |
 
 Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).

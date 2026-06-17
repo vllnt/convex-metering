@@ -24,8 +24,12 @@ never double-count. Price it in your own tables — this owns accurate usage, no
 
 ## Features
 
-- **Idempotent recording** — pass an `idempotencyKey` and a retried event is a safe no-op.
-- **Per-meter aggregation** — `sum` (accumulate), `max` (peak), or `last` (gauge), fixed at definition.
+- **Idempotent recording** — `idempotencyKey` makes a retry a no-op; the dedup ledger is **separate from records**, so it survives `pruneRecords` (no double-count after pruning).
+- **Per-meter aggregation** — `sum` (accumulate), `max` (peak), or `last` (gauge), locked once usage exists.
+- **Corrections + freeze** — `adjust` posts signed refunds/credits (sum, never below zero); `closePeriod` freezes a billed period so late events can't restate it.
+- **Atomic limits** — `recordWithLimit` checks a cap and records in one transaction (no read-then-write overage race).
+- **Reconciliation** — `verify` recomputes the rollup from records and flags drift for billing audits.
+- **Lifecycle + GDPR** — `listMeters`/`listSubjectUsage` discovery, batched `reset`, and `eraseSubject` (erase a subject across all meters).
 - **Period rollups** — each `(meter, subject, period)` rolls up independently; reads are O(1).
 - **Host-owned periods** — `period` is an opaque string you choose (`"2026-06"`, `"2026-W24"`, `"all"`); no date parsing, any calendar/timezone.
 - **Audit + retention** — raw records back every rollup; prune old records on your schedule, rollups stay.
@@ -81,12 +85,18 @@ in your own table — see [`example/convex/example.ts`](example/convex/example.t
 | Method | Kind | Result |
 |--------|------|--------|
 | `defineMeter(ctx, key, { aggregation?, unit?, scope? })` | mutation | `{ created: boolean }` |
-| `record(ctx, meter, subjectRef, quantity, { period?, idempotencyKey?, scope? })` | mutation | `{ recorded: true; value; count } \| { recorded: false; reason: "duplicate" }` |
-| `reset(ctx, meter, subjectRef, { period?, scope? })` | mutation | `boolean` |
-| `pruneRecords(ctx, before, batch?)` | mutation | `number` (records removed in the first pass) |
-| `getMeter(ctx, key, scope?)` | query | `MeterDefinition \| null` |
-| `usage(ctx, meter, subjectRef, { period?, scope? })` | query | `{ value, count } \| null` |
-| `listUsage(ctx, meter, subjectRef, scope?)` | query | `{ period, value, count }[]` |
+| `record(ctx, meter, subjectRef, quantity, { period?, idempotencyKey?, actorRef?, scope? })` | mutation | `{ recorded: true; value; count } \| { recorded: false; reason: "duplicate" }` |
+| `recordWithLimit(ctx, meter, subjectRef, quantity, limit, opts?)` | mutation | `RecordOutcome \| { recorded: false; reason: "limit_exceeded"; value; limit }` |
+| `adjust(ctx, meter, subjectRef, delta, opts?)` | mutation | `RecordOutcome` (sum-only signed correction) |
+| `closePeriod(ctx, meter, subjectRef, { period?, scope? })` | mutation | `boolean` (freeze) |
+| `reset(ctx, meter, subjectRef, { period?, scope?, batch? })` | mutation | `number` (records removed this pass) |
+| `eraseSubject(ctx, subjectRef, { scope?, batch? })` | mutation | `number` (GDPR erasure) |
+| `pruneRecords(ctx, before, batch?)` · `pruneSeen(ctx, before, batch?)` | mutation | `number` |
+| `getMeter(ctx, key, scope?)` · `listMeters(ctx, scope?)` | query | `MeterDefinition \| null` · `MeterDefinition[]` |
+| `usage(ctx, meter, subjectRef, { period?, scope? })` | query | `{ value, count, closed } \| null` |
+| `listUsage(ctx, meter, subjectRef, scope?)` | query | `{ period, value, count, closed }[]` |
+| `listSubjectUsage(ctx, subjectRef, scope?)` | query | `{ meter, period, value, count, closed }[]` |
+| `verify(ctx, meter, subjectRef, { period?, scope? })` | query | `{ rollupValue, recomputedValue, recordsRemaining, consistent, … }` |
 
 Full reference: [docs/API.md](docs/API.md).
 

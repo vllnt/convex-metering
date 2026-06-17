@@ -13,82 +13,113 @@ const metering = new Metering(components.metering, {
 });
 ```
 
-All methods take the host `ctx` (a query or mutation context) as the first argument. Meter keys,
-quantities, units, and `subjectRef` are concrete typed values — there is no opaque payload.
+All methods take the host `ctx` (a query or mutation context) as the first argument.
 
-**Periods are host-owned.** A `period` is an opaque string you choose (`"2026-06"`, `"2026-W24"`,
-`"all"`). The component never parses dates, so the calendar and timezone are entirely yours.
+**Periods are host-owned.** A `period` is an opaque string you choose (`"2026-06"`, `"2026-W24"`).
+The component never parses dates, so the calendar and timezone are entirely yours.
 
-**Time is server-sourced.** `recordedAt` and rollup timestamps are read from the server clock inside
-each handler; no method accepts a caller-supplied timestamp.
+**Precision.** `sum` accumulates in IEEE-754 floats. For money-exact metering, record **integer
+minor-units** (bytes not GB, mills not dollars) and scale in the host.
+
+**Time is server-sourced.** Timestamps are read from the server clock; no method accepts a caller one.
 
 ## Mutations
 
-### `defineMeter(ctx, key, opts?) → { created: boolean }`
+### `defineMeter(ctx, key, opts?) → { created }`
 
-`opts`: `{ aggregation?: "sum" | "max" | "last"; unit?: string; scope?: string }` (defaults:
-`aggregation = "sum"`, `unit = ""`).
+`opts`: `{ aggregation?: "sum" | "max" | "last"; unit?: string; scope?: string }` (defaults `sum`, `""`).
 
-Create or update a meter, keyed by `(scope, key)`. `aggregation` fixes how successive quantities fold
-into a period value: `sum` accumulates, `max` keeps the peak, `last` overwrites (a gauge). `unit` is
-a display label. Returns `{ created: true }` on insert, `{ created: false }` on update.
+Create or update a meter. `unit` may change freely. `aggregation` is **locked once any usage exists**
+(`AGGREGATION_LOCKED`) — switching it would leave the rollup computed under two rules; define a new
+meter key instead.
 
 ### `record(ctx, meter, subjectRef, quantity, opts?) → RecordOutcome`
 
-`opts`: `{ period?: string; idempotencyKey?: string; scope?: string }` (`period` defaults to the
-client `defaultPeriod`).
+`opts`: `{ period?; idempotencyKey?; actorRef?; scope? }`.
 
-Record a usage event and advance the rollup for `(scope, meter, subjectRef, period)`:
+Record a usage event and advance the rollup. `{ recorded: true; value; count }`, or
+`{ recorded: false; reason: "duplicate" }` when the `idempotencyKey` was already seen. The dedup is
+tracked in a dedicated `seen` ledger that **survives `pruneRecords`**, so a redelivered event never
+double-counts even after raw records are pruned. `actorRef` is stored on the record for the audit trail.
 
-- `{ recorded: true; value; count }` — the event was written; `value` is the new aggregate for the
-  period, `count` the number of events.
-- `{ recorded: false; reason: "duplicate" }` — an event with the same `idempotencyKey` was already
-  recorded; nothing changed. A retried `record` is a safe no-op.
+**Throws** `INVALID_QUANTITY` (negative/non-finite), `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`
+(an `idempotencyKey` on a non-`sum` gauge), `PERIOD_CLOSED` (the period was frozen).
 
-Without an `idempotencyKey` every call is a distinct event.
+### `recordWithLimit(ctx, meter, subjectRef, quantity, limit, opts?) → LimitOutcome`
 
-**Validation** — throws `ConvexError({ code: "INVALID_QUANTITY" })` when `quantity` is negative or
-non-finite, and `ConvexError({ code: "METER_NOT_FOUND" })` when no meter is defined for
-`(scope, meter)`. Define the meter first.
+Atomic check-and-record: records only if it would not push the period over `limit`, in one
+serializable mutation (no read-then-write race). Returns the recorded outcome, `duplicate`, or
+`{ recorded: false; reason: "limit_exceeded"; value; limit }`.
 
-### `reset(ctx, meter, subjectRef, opts?) → boolean`
+### `adjust(ctx, meter, subjectRef, delta, opts?) → RecordOutcome`
 
-`opts`: `{ period?: string; scope?: string }`.
+`opts`: `{ period?; idempotencyKey?; actorRef?; scope? }`. **`sum` meters only.**
 
-Clear a subject's usage for one `(meter, period)` — deletes the rollup and every raw record behind
-it. Returns `true` when a rollup existed, `false` otherwise. Other periods are untouched.
+Post a signed correction (`delta` may be negative — a refund/credit/void). Appends a reversing record
+and re-folds; the rollup stays equal to the sum of records and never goes negative. Idempotent.
 
-### `pruneRecords(ctx, before, batch?) → number`
+**Throws** `INVALID_QUANTITY` (non-finite `delta`), `METER_NOT_FOUND`, `ADJUST_REQUIRES_SUM`,
+`PERIOD_CLOSED`, `ADJUST_BELOW_ZERO` (the correction would make the rollup negative).
 
-`before` is required (absolute ms); `batch` defaults to `200`.
+### `closePeriod(ctx, meter, subjectRef, opts?) → boolean`
 
-Delete up to `batch` raw records whose `recordedAt < before`, oldest first via the `by_recorded`
-index, and return the count removed in the first pass. **Rollups — the billable truth — are never
-touched.** `before` is required by design so a caller cannot wipe everything by passing "now"; the
-host owns its retention window. If a full batch was removed the sweep self-reschedules through the
-component scheduler until the tail is clean. Idempotent.
+`opts`: `{ period?; scope? }`. Freeze a `(meter, subject, period)` so its billed value is immutable —
+later `record`/`adjust`/`recordWithLimit` into it throw `PERIOD_CLOSED`. Returns `false` if no usage
+exists for it. `usage()` then reports `closed: true`.
+
+### `reset(ctx, meter, subjectRef, opts?) → number`
+
+`opts`: `{ period?; scope?; batch? }` (`batch` default `200`). Clear a subject's usage for one
+`(meter, period)` — deletes the rollup and raw records in bounded, self-rescheduling batches; returns
+the records removed this pass (0 once drained). Idempotency keys in `seen` are kept, so a late replay
+stays deduped rather than re-counting.
+
+### `eraseSubject(ctx, subjectRef, opts?) → number`
+
+`opts`: `{ scope?; batch? }`. Erase a subject across **every meter and period** (records + rollups),
+bounded + self-rescheduling. The GDPR right-to-erasure primitive. `seen` (idempotency keys, no subject
+PII) is left intact.
+
+### `pruneRecords(ctx, before, batch?) → number` · `pruneSeen(ctx, before, batch?) → number`
+
+`before` required (absolute ms). `pruneRecords` deletes raw records older than `before`; `pruneSeen`
+deletes idempotency keys older than `before` — set its cutoff **older than your longest retry /
+redelivery window** (pruning a key re-opens its replay). Rollups are never touched. Both bounded +
+self-rescheduling; return the count removed in the first pass.
 
 ## Queries
 
-### `getMeter(ctx, key, scope?) → MeterDefinition | null`
+### `getMeter(ctx, key, scope?) → MeterDefinition | null` · `listMeters(ctx, scope?) → MeterDefinition[]`
 
-The meter definition (`key`, `scope`, `aggregation`, `unit`, `createdAt`), or `null` if none exists.
+The meter definition, or every meter in the scope (the discovery surface).
 
-### `usage(ctx, meter, subjectRef, opts?) → { value, count } | null`
+### `usage(ctx, meter, subjectRef, opts?) → { value, count, closed } | null`
 
-`opts`: `{ period?: string; scope?: string }`.
+`opts`: `{ period?; scope? }`. A subject's rolled-up usage for one period (`closed` once frozen), or
+`null`. The O(1) read for billing / limit checks.
 
-A subject's rolled-up usage for one period: `value` is the aggregate (sum, max, or last per the
-meter), `count` the number of events. `null` when nothing has been recorded. This is the O(1) read
-for billing and limit checks.
+### `listUsage(ctx, meter, subjectRef, scope?) → { period, value, count, closed }[]`
 
-### `listUsage(ctx, meter, subjectRef, scope?) → { period, value, count }[]`
+Every period's rollup for a subject on a meter.
 
-Every period's rollup for a subject on a meter. Returns `[]` when the subject has no recorded usage.
+### `listSubjectUsage(ctx, subjectRef, scope?) → { meter, period, value, count, closed }[]`
+
+Every meter+period rollup for a subject across the scope — invoice line items in one read.
+
+### `verify(ctx, meter, subjectRef, opts?) → { rollupValue, rollupCount, recomputedValue, recordsRemaining, consistent }`
+
+`opts`: `{ period?; scope? }`. Reconcile the rollup against the surviving records by re-folding them
+under the meter's aggregation. `consistent` is `rollupValue === recomputedValue`; trust it only when
+`recordsRemaining > 0` (pruned history can't be fully recomputed). The billing-audit guardrail.
 
 ## Error codes
 
 | Code | Thrown by | When |
 |------|-----------|------|
-| `INVALID_QUANTITY` | `record` | `quantity` is negative or non-finite. |
-| `METER_NOT_FOUND` | `record` | No meter is defined for `(scope, meter)` — call `defineMeter` first. |
+| `INVALID_QUANTITY` | `record` / `recordWithLimit` / `adjust` | `quantity` negative/non-finite, or `delta` non-finite. |
+| `METER_NOT_FOUND` | `record` / `recordWithLimit` / `adjust` / `verify` | No meter defined for `(scope, meter)`. |
+| `IDEMPOTENCY_NOT_SUPPORTED` | `record` / `recordWithLimit` | An `idempotencyKey` on a non-`sum` (gauge) meter. |
+| `PERIOD_CLOSED` | `record` / `recordWithLimit` / `adjust` | The period was frozen by `closePeriod`. |
+| `AGGREGATION_LOCKED` | `defineMeter` | An aggregation change after usage exists. |
+| `ADJUST_REQUIRES_SUM` | `adjust` | A non-`sum` meter. |
+| `ADJUST_BELOW_ZERO` | `adjust` | The correction would make the rollup negative. |

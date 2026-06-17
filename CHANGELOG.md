@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `adjust` — signed corrections (refund/credit/void) on `sum` meters; appends a reversing record,
+  keeps the rollup equal to the sum of records and never negative (`ADJUST_BELOW_ZERO`).
+- `recordWithLimit` — atomic check-and-record against a `limit` (closes the read-then-write overage
+  race); returns `limit_exceeded` without recording when it would cross.
+- `closePeriod` + `closed` on the usage reads — freeze a billed period so a late event can't restate
+  it (`record`/`adjust`/`recordWithLimit` then throw `PERIOD_CLOSED`).
+- `eraseSubject` (GDPR, across all meters/periods), `listMeters`, `listSubjectUsage`, and `verify`
+  (reconcile the rollup against surviving records). `reset` is now bounded + self-rescheduling
+  (returns a count) and `pruneSeen` prunes the idempotency ledger. Optional `actorRef` on records.
+
+### Changed
+
+- **Idempotency dedup moved to a dedicated `seen` table.** A meter's aggregation is now **locked**
+  once usage exists (`AGGREGATION_LOCKED`), and an `idempotencyKey` on a non-`sum` gauge is rejected
+  (`IDEMPOTENCY_NOT_SUPPORTED`).
+
+### Fixed
+
+- **Prune-vs-dedup double-count.** Dedup previously read the `records` table that `pruneRecords`
+  deletes, so a redelivered event after a prune re-counted the billable rollup. Dedup now lives in the
+  separate `seen` ledger (pruned independently via `pruneSeen`), so pruning audit rows never re-opens
+  a duplicate. The earlier docs ("retried record is a safe no-op", "rollups never touched") implied
+  prune was consequence-free; corrected.
+
 ## [0.1.0] - 2026-06-17
 
 ### Added

@@ -8,10 +8,12 @@ import { aggregation } from "./validators";
  * host-owned strings.
  *
  * - `meters`  — the meter definition (its aggregation rule + display unit).
- * - `records` — the append-only raw usage events (audit + idempotency source).
+ * - `records` — the append-only raw usage events (the audit trail).
+ * - `seen`    — the idempotency-key ledger, **separate from `records`** so pruning
+ *   raw audit rows never re-opens a duplicate (the prune-vs-dedup double-count).
  * - `rollups` — the materialized per-(meter, subject, period) aggregate, the fast
- *   read for billing/limits. Rollups are the billable truth and are never pruned;
- *   raw `records` may be pruned by the host once they pass its retention window.
+ *   read for billing/limits; the billable truth (never pruned). `closedAt` freezes
+ *   a billed period so late events can't silently restate the invoiced number.
  */
 export default defineSchema({
   meters: defineTable({
@@ -20,7 +22,9 @@ export default defineSchema({
     aggregation,
     unit: v.string(),
     createdAt: v.number(),
-  }).index("by_scope_key", ["scope", "key"]),
+  })
+    .index("by_scope_key", ["scope", "key"])
+    .index("by_scope", ["scope"]),
 
   records: defineTable({
     scope: v.string(),
@@ -29,6 +33,7 @@ export default defineSchema({
     quantity: v.number(),
     period: v.string(),
     idempotencyKey: v.optional(v.string()),
+    actorRef: v.optional(v.string()),
     recordedAt: v.number(),
   })
     .index("by_scope_meter_subject_period", [
@@ -37,8 +42,17 @@ export default defineSchema({
       "subjectRef",
       "period",
     ])
-    .index("by_idem", ["scope", "meterKey", "idempotencyKey"])
+    .index("by_scope_subject", ["scope", "subjectRef"])
     .index("by_recorded", ["recordedAt"]),
+
+  seen: defineTable({
+    scope: v.string(),
+    meterKey: v.string(),
+    idempotencyKey: v.string(),
+    seenAt: v.number(),
+  })
+    .index("by_idem", ["scope", "meterKey", "idempotencyKey"])
+    .index("by_seen", ["seenAt"]),
 
   rollups: defineTable({
     scope: v.string(),
@@ -48,10 +62,13 @@ export default defineSchema({
     value: v.number(),
     count: v.number(),
     updatedAt: v.number(),
-  }).index("by_scope_meter_subject_period", [
-    "scope",
-    "meterKey",
-    "subjectRef",
-    "period",
-  ]),
+    closedAt: v.optional(v.number()),
+  })
+    .index("by_scope_meter_subject_period", [
+      "scope",
+      "meterKey",
+      "subjectRef",
+      "period",
+    ])
+    .index("by_scope_subject", ["scope", "subjectRef"]),
 });

@@ -3,17 +3,20 @@
 > Metered usage records — idempotent usage events rolled up per billing period, as a Convex component
 
 `@vllnt/convex-metering` is a publishable Convex component. It targets `convex@^1.41.0`. It stores
-three sandboxed tables — `meters` (the definition: an `aggregation` rule of `sum`/`max`/`last` plus a
-display `unit`, unique per `(scope, key)`), `records` (append-only raw usage events, the audit trail
-and idempotency source), and `rollups` (the materialized per-`(meter, subject, period)` aggregate,
-the O(1) read for billing). `defineMeter` registers a meter; `record` writes a usage event, folds it
-into the period rollup per the meter's aggregation, and is idempotent when given an `idempotencyKey`
-(a retry returns `{ recorded: false, reason: "duplicate" }`). `usage` and `listUsage` read rollups;
-`reset` clears one `(meter, subject, period)`; `pruneRecords` deletes raw records older than a
-required cutoff while leaving rollups — the billable truth — intact. `period` is an opaque host
-string (the component never parses dates); time is server-sourced. The component owns accurate,
-idempotent usage accounting; the host owns the meter meaning, the opaque `subjectRef`, the period
-bucketing, pricing (billed in the host's own tables), retention, and auth.
+four sandboxed tables — `meters` (definition: an `aggregation` rule of `sum`/`max`/`last` + display
+`unit`, locked once usage exists), `records` (append-only raw usage events + optional `actorRef`),
+`seen` (the idempotency-key ledger, **separate from `records`** so pruning audit never re-opens a
+duplicate), and `rollups` (the materialized per-`(meter, subject, period)` aggregate, the O(1)
+billable truth, with `closedAt` to freeze a period). `record` folds a usage event into the rollup and
+is idempotent via `idempotencyKey` (sum meters only; a key on a gauge throws); `recordWithLimit`
+atomically refuses to cross a `limit`; `adjust` posts signed corrections to sum meters (never below
+zero); `closePeriod` freezes a billed period (later writes throw `PERIOD_CLOSED`). `usage`/`listUsage`/
+`listSubjectUsage` read rollups (with `closed`); `verify` reconciles a rollup against surviving
+records; `reset` (one period) and `eraseSubject` (GDPR, all meters) delete in self-rescheduling
+batches; `pruneRecords` and `pruneSeen` retain records and dedup keys on independent cutoffs. `period`
+is an opaque host string (no date parsing); record integer minor-units for money precision; time is
+server-sourced. The component owns accurate, idempotent usage accounting; the host owns the meter
+meaning, the opaque `subjectRef`/`actorRef`, period bucketing, pricing, precision, retention, and auth.
 
 ## Docs
 

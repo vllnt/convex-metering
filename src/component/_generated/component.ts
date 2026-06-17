@@ -24,6 +24,29 @@ import type { FunctionReference } from "convex/server";
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
     mutations: {
+      adjust: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          actorRef?: string;
+          delta: number;
+          idempotencyKey?: string;
+          meter: string;
+          period: string;
+          scope: string;
+          subjectRef: string;
+        },
+        | { count: number; recorded: true; value: number }
+        | { reason: "duplicate"; recorded: false },
+        Name
+      >;
+      closePeriod: FunctionReference<
+        "mutation",
+        "internal",
+        { meter: string; period: string; scope: string; subjectRef: string },
+        boolean,
+        Name
+      >;
       defineMeter: FunctionReference<
         "mutation",
         "internal",
@@ -36,7 +59,21 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { created: boolean },
         Name
       >;
+      eraseSubject: FunctionReference<
+        "mutation",
+        "internal",
+        { batch: number; scope: string; subjectRef: string },
+        number,
+        Name
+      >;
       pruneRecords: FunctionReference<
+        "mutation",
+        "internal",
+        { batch: number; before: number },
+        number,
+        Name
+      >;
+      pruneSeen: FunctionReference<
         "mutation",
         "internal",
         { batch: number; before: number },
@@ -47,6 +84,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         {
+          actorRef?: string;
           idempotencyKey?: string;
           meter: string;
           period: string;
@@ -55,9 +93,27 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           subjectRef: string;
         },
         | { count: number; recorded: true; value: number }
+        | { reason: "duplicate"; recorded: false },
+        Name
+      >;
+      recordWithLimit: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          actorRef?: string;
+          idempotencyKey?: string;
+          limit: number;
+          meter: string;
+          period: string;
+          quantity: number;
+          scope: string;
+          subjectRef: string;
+        },
+        | { count: number; recorded: true; value: number }
+        | { reason: "duplicate"; recorded: false }
         | {
-            count: number;
-            reason: "duplicate";
+            limit: number;
+            reason: "limit_exceeded";
             recorded: false;
             value: number;
           },
@@ -66,8 +122,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       reset: FunctionReference<
         "mutation",
         "internal",
-        { meter: string; period: string; scope: string; subjectRef: string },
-        boolean,
+        {
+          batch: number;
+          meter: string;
+          period: string;
+          scope: string;
+          subjectRef: string;
+        },
+        number,
         Name
       >;
     };
@@ -85,18 +147,62 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
+      listMeters: FunctionReference<
+        "query",
+        "internal",
+        { scope: string },
+        Array<{
+          aggregation: "sum" | "max" | "last";
+          createdAt: number;
+          key: string;
+          scope: string;
+          unit: string;
+        }>,
+        Name
+      >;
+      listSubjectUsage: FunctionReference<
+        "query",
+        "internal",
+        { scope: string; subjectRef: string },
+        Array<{
+          closed: boolean;
+          count: number;
+          meter: string;
+          period: string;
+          value: number;
+        }>,
+        Name
+      >;
       listUsage: FunctionReference<
         "query",
         "internal",
         { meter: string; scope: string; subjectRef: string },
-        Array<{ count: number; period: string; value: number }>,
+        Array<{
+          closed: boolean;
+          count: number;
+          period: string;
+          value: number;
+        }>,
         Name
       >;
       usage: FunctionReference<
         "query",
         "internal",
         { meter: string; period: string; scope: string; subjectRef: string },
-        null | { count: number; value: number },
+        null | { closed: boolean; count: number; value: number },
+        Name
+      >;
+      verify: FunctionReference<
+        "query",
+        "internal",
+        { meter: string; period: string; scope: string; subjectRef: string },
+        {
+          consistent: boolean;
+          recomputedValue: number;
+          recordsRemaining: number;
+          rollupCount: number;
+          rollupValue: number;
+        },
         Name
       >;
     };
