@@ -15,6 +15,10 @@
       "types": "./dist/client/index.d.ts",
       "default": "./dist/client/index.js"
     },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
     "./test": "./src/test.ts",
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
@@ -51,17 +55,29 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "convex": "^1.41.0"
+    "convex": "^1.41.0",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "^4.1.8",
     "@vllnt/eslint-config": "^1.0.0",
     "@vllnt/typescript": "^1.0.0",
     "convex": "^1.41.0",
     "convex-test": "^0.0.53",
     "eslint": "^9.0.0",
+    "jsdom": "^29.1.1",
     "prettier": "^3.4.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "typescript": "^5.7.0",
     "vitest": "^4.1.8"
   },

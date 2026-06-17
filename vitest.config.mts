@@ -13,6 +13,7 @@ export default defineConfig({
       // without a matching test fails CI — that is the 100% E2E coverage gate.
       include: [
         "src/shared.ts",
+        "src/react/index.tsx",
         "src/client/index.ts",
         "src/component/mutations.ts",
         "src/component/queries.ts",

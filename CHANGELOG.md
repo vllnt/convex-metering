@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Optional `@vllnt/convex-metering/react` entry — `useUsage` (a live usage meter deriving
+  `remaining`/`fraction`/`exceeded` from an optional `limit`) and `useUsageList`. Thin `useQuery`
+  wrappers over the host's re-exported refs; `react` is an optional peer dep; render-tested in jsdom at 100%.
 - `adjust` — signed corrections (refund/credit/void) on `sum` meters; appends a reversing record,
   keeps the rollup equal to the sum of records and never negative (`ADJUST_BELOW_ZERO`).
 - `recordWithLimit` — atomic check-and-record against a `limit` (closes the read-then-write overage

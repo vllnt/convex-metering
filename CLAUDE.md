@@ -20,6 +20,8 @@ It follows the vllnt Component Standard (see the `oss-packages` hub
 src/
 ├── shared.ts              # constants + the pure aggregation rule (applyAggregation)
 ├── test.ts                # convex-test register() helper
+├── react/
+│   └── index.tsx          # optional ./react hooks (useUsage, useUsageList)
 ├── client/
 │   ├── index.ts           # Metering class (consumer-facing API)
 │   └── types.ts           # public TypeScript interfaces
@@ -108,9 +110,10 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 
 - **Fully typed, zero `v.any()`; server-sourced time.**
 
-- **Backend-only at 0.1.0 (no `./react` entry):** a reactive `useUsage` surface (a live "8,200 /
-  10,000 this period" meter, with `closed`/`remaining`) is deferred until a first consumer asks, per
-  the front-tooling analysis in the README.
+- **Optional `./react` front-tooling:** `useUsage` (a live "8,200 / 10,000 this period" meter — derives
+  `remaining`/`fraction`/`exceeded` from an optional `limit`) and `useUsageList` wrap `useQuery` over the
+  host's **re-exported** query refs — the component never owns the host `api`. `react` is an optional
+  peer dep; the hooks are render-tested in jsdom at 100%. No-leak: only the caller's own usage metadata.
 
 ## Conventions
 

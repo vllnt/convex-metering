@@ -102,8 +102,29 @@ Full reference: [docs/API.md](docs/API.md).
 
 ## React
 
-Backend-only at this version — no `./react` entry. Usage is recorded server-side; a reactive usage
-hook may ship in a later version.
+Optional, tree-shakeable hooks via `@vllnt/convex-metering/react` (`react` is an optional peer dep).
+Each wraps `useQuery` over a query reference **you re-export** from your app — the component never owns
+your `api`. `useUsage` derives a progress-bar view from an optional `limit`.
+
+```tsx
+// convex/usage.ts — re-export a host wrapper (auth gated)
+// export const myUsage = query({ args: { orgId: v.string() },
+//   handler: (ctx, { orgId }) => metering.usage(ctx, "api_calls", orgId, { period: "2026-06" }) });
+
+import { useUsage } from "@vllnt/convex-metering/react";
+import { api } from "@/convex/_generated/api";
+
+function UsageBar({ orgId }: { orgId: string }) {
+  const u = useUsage(api.usage.myUsage, { meter: "api_calls", subjectRef: orgId, period: "2026-06" }, { limit: 10000 });
+  if (u.isLoading) return <Spinner />;
+  return <Meter value={u.fraction} label={`${u.value} / ${u.limit}`} warn={u.exceeded} />;
+}
+```
+
+| Hook | Wraps | Returns |
+|------|-------|---------|
+| `useUsage(usageRef, args, { limit? })` | `usage` | `{ isLoading, value, count, closed, limit?, remaining?, fraction?, exceeded? }` |
+| `useUsageList(listUsageRef, args)` | `listUsage` | `UsageEntry[] \| undefined` |
 
 ## Security
 
