@@ -143,12 +143,11 @@ the hub (`oss-packages` `.claude/rules/component-standard.md`) — not duplicate
 
 | Changed | Update in the same commit |
 |---------|--------------------------|
-| Public API (defineMeter/record/recordWithLimit/adjust/closePeriod/reset/eraseSubject/prune*/getMeter/listMeters/usage/listUsage/listSubjectUsage/verify) | README API Reference table, `docs/API.md`, `llms.txt` context, regenerate `llms-full.txt` |
+| Public API (defineMeter/record/recordWithLimit/adjust/closePeriod/reset/eraseSubject/prune*/getMeter/listMeters/usage/listUsage/listSubjectUsage/verify) | README API Reference table, `docs/API.md`, `llms.txt` context |
 | Config options / defaults (`defaultScope`, `defaultPeriod`, aggregation, batch) | README API Reference, `docs/API.md` constructor section |
 | Schema / tables / indexes | this file (Architecture), README Architecture, `docs/API.md` |
 | Error codes | `docs/API.md` → `## Error codes` table |
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
 | Aggregation / idempotency / period / adjust / rollup semantics | `docs/API.md`, Key design decisions above |
-| Any change | `pnpm generate:llms` to keep `llms-full.txt` current |
 
 Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).
