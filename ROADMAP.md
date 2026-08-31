@@ -6,7 +6,7 @@ This component's own roadmap. Phases are immutable kebab-case **outcome slugs**;
 **Status vocabulary:** `planned` · `in-progress` · `done` · `blocked` · `dropped`
 
 > Hub-level milestones (creation, fleet programs, the canary→stable hold) live in the
-> `vllnt/convex-components` hub `ROADMAP.md`. This file tracks only this package's own work.
+> `vllnt/oss-packages` hub `ROADMAP.md`. This file tracks only this package's own work.
 
 ---
 
@@ -20,7 +20,7 @@ Idempotent usage records + per-period rollups, shipped at 0.1.0 (canary).
 - `ship-metered-records.4` — `done` — `reset` one `(meter, subject, period)`; `pruneRecords` (required cutoff, bounded, self-rescheduling, rollups preserved).
 - `ship-metered-records.5` — `done` — scope namespacing; host-supplied opaque `period`; server-sourced time.
 - `ship-metered-records.6` — `done` — 100% E2E coverage via the `example/` host harness (happy + adversarial); lint/typecheck/build green.
-- `ship-metered-records.7` — `done` — standard repo: CI, canary `publish.yml`, docs set, `.claude/rules`, repo hardening.
+- `ship-metered-records.7` — `done` — standard repo: CI, canary `publish.yml`, docs set, `AGENTS.md` policy, repo hardening.
 
 ## harden-billing-correctness — `done`
 

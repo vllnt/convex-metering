@@ -12,7 +12,12 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 
 Metered usage records — idempotent usage events rolled up per billing period, as a Convex component.
 It follows the vllnt Component Standard (see the `oss-packages` hub
-`.claude/rules/component-standard.md`).
+`AGENTS.md`).
+
+## Agent instructions
+
+`AGENTS.md` is the sole agent-instruction source for this repository. Do not add
+`CLAUDE.md` or `.claude` content.
 
 ## Architecture
 
@@ -123,21 +128,12 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 - 100% test coverage is BLOCKING (`vitest.config.mts` thresholds: statements, branches, functions, lines).
 - Runtime deps: only official `@convex-dev/*` + `@vllnt/*`.
 
-## Project rules
+## Repository policy
 
-The universal vllnt engineering rules ship in `.claude/rules/` — **synced from the
-`oss-packages` hub** (single source; edit them there, not here):
-
-| Rule | Covers |
-|------|--------|
-| [`code-style.md`](.claude/rules/code-style.md) | Match-surrounding-code, smallest change that works, typed public APIs |
-| [`git-workflow.md`](.claude/rules/git-workflow.md) | Branch-first, signed no-reply commits, landing mode, strict checks |
-| [`commit-privacy.md`](.claude/rules/commit-privacy.md) | No-reply commit identity; never leak a personal email |
-| [`security.md`](.claude/rules/security.md) | Secrets, boundary validation, OWASP, dependency review |
-| [`docs-sync.md`](.claude/rules/docs-sync.md) | **BLOCKING** docs stay current with every commit |
-
-The full BLOCKING Component Standard (file/CI/docs/coverage contract) and fleet governance live in
-the hub (`oss-packages` `.claude/rules/component-standard.md`) — not duplicated into this repo.
+- Match surrounding code and make the smallest coherent change.
+- Keep public APIs typed, validate trust boundaries, and never commit secrets.
+- Use a feature branch, signed no-reply commits, and the repository's required checks.
+- Update affected documentation in the same commit and grep stale values.
 
 ## Docs sync
 
@@ -152,3 +148,9 @@ the hub (`oss-packages` `.claude/rules/component-standard.md`) — not duplicate
 | Any change | `pnpm generate:llms` to keep `llms-full.txt` current |
 
 Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).
+
+## Generated code
+
+- Every `**/_generated/**` file is owned exclusively by Convex CLI codegen.
+- Never create, edit, lint, or format generated files manually.
+- Run `pnpm codegen` to regenerate them and commit the generated output unchanged.
