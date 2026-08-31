@@ -127,7 +127,7 @@ export const defineMeter = mutation({
         });
       }
     }
-    await ctx.db.patch(existing._id, {
+    await ctx.db.patch("meters", existing._id, {
       aggregation: args.aggregation,
       unit: args.unit,
     });
@@ -200,7 +200,7 @@ export const record = mutation({
     }
     const value = applyAggregation(meter.aggregation, rollup.value, args.quantity);
     const count = rollup.count + 1;
-    await ctx.db.patch(rollup._id, { value, count, updatedAt: now });
+    await ctx.db.patch("rollups", rollup._id, { value, count, updatedAt: now });
     return { recorded: true as const, value, count };
   },
 });
@@ -277,7 +277,7 @@ export const recordWithLimit = mutation({
       });
       return { recorded: true as const, value: projected, count: 1 };
     }
-    await ctx.db.patch(rollup._id, {
+    await ctx.db.patch("rollups", rollup._id, {
       value: projected,
       count: rollup.count + 1,
       updatedAt: now,
@@ -356,7 +356,7 @@ export const adjust = mutation({
       });
       return { recorded: true as const, value: newValue, count: 1 };
     }
-    await ctx.db.patch(rollup._id, {
+    await ctx.db.patch("rollups", rollup._id, {
       value: newValue,
       count: rollup.count + 1,
       updatedAt: now,
@@ -383,7 +383,7 @@ export const closePeriod = mutation({
     if (rollup === null) {
       return false;
     }
-    await ctx.db.patch(rollup._id, { closedAt: Date.now() });
+    await ctx.db.patch("rollups", rollup._id, { closedAt: Date.now() });
     return true;
   },
 });
@@ -415,7 +415,7 @@ export const reset = mutation({
       )
       .take(args.batch);
     for (const row of records) {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("records", row._id);
     }
     if (records.length > 0) {
       await ctx.scheduler.runAfter(0, api.mutations.reset, {
@@ -429,7 +429,7 @@ export const reset = mutation({
     }
     const rollup = await loadRollup(ctx, args.scope, args.meter, args.subjectRef, args.period);
     if (rollup !== null) {
-      await ctx.db.delete(rollup._id);
+      await ctx.db.delete("rollups", rollup._id);
     }
     return 0;
   },
@@ -453,7 +453,7 @@ export const eraseSubject = mutation({
       )
       .take(args.batch);
     for (const row of records) {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("records", row._id);
       removed++;
     }
     const rollups = await ctx.db
@@ -463,7 +463,7 @@ export const eraseSubject = mutation({
       )
       .take(args.batch);
     for (const row of rollups) {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("rollups", row._id);
       removed++;
     }
     if (removed > 0) {
@@ -492,7 +492,7 @@ export const pruneRecords = mutation({
       .withIndex("by_recorded", (q) => q.lt("recordedAt", args.before))
       .take(args.batch);
     for (const row of stale) {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("records", row._id);
     }
     if (stale.length === args.batch) {
       await ctx.scheduler.runAfter(0, api.mutations.pruneRecords, {
@@ -518,7 +518,7 @@ export const pruneSeen = mutation({
       .withIndex("by_seen", (q) => q.lt("seenAt", args.before))
       .take(args.batch);
     for (const row of stale) {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("seen", row._id);
     }
     if (stale.length === args.batch) {
       await ctx.scheduler.runAfter(0, api.mutations.pruneSeen, {
