@@ -55,6 +55,38 @@ function guardOpen(rollup: Doc<"rollups"> | null): void {
   }
 }
 
+const MAX_BATCH = 500;
+
+/** Reject batch sizes that could stall a sweep or exceed a safe transaction bound. */
+function guardBatch(batch: number): void {
+  if (!Number.isFinite(batch) || !Number.isInteger(batch) || batch < 1 || batch > MAX_BATCH) {
+    throw new ConvexError({
+      code: "INVALID_BATCH",
+      message: `batch must be an integer between 1 and ${MAX_BATCH}`,
+    });
+  }
+}
+
+/** Check whether an idempotency key is already present without mutating the ledger. */
+async function alreadySeen(
+  ctx: MutationCtx,
+  scope: string,
+  meterKey: string,
+  idempotencyKey: string | undefined,
+): Promise<boolean> {
+  if (idempotencyKey === undefined) {
+    return false;
+  }
+  return (
+    (await ctx.db
+      .query("seen")
+      .withIndex("by_idem", (q) =>
+        q.eq("scope", scope).eq("meterKey", meterKey).eq("idempotencyKey", idempotencyKey),
+      )
+      .first()) !== null
+  );
+}
+
 /**
  * Idempotency check against the dedicated `seen` ledger (NOT `records`, so pruning
  * audit rows never re-opens a duplicate). Returns `true` if this key was already
@@ -232,6 +264,12 @@ export const recordWithLimit = mutation({
         message: "quantity must be a non-negative finite number",
       });
     }
+    if (!(args.limit >= 0 && isFinite(args.limit))) {
+      throw new ConvexError({
+        code: "INVALID_LIMIT",
+        message: "limit must be a non-negative finite number",
+      });
+    }
     const meter = await loadMeter(ctx, args.scope, args.meter);
     if (args.idempotencyKey !== undefined && meter.aggregation !== "sum") {
       throw new ConvexError({
@@ -242,6 +280,9 @@ export const recordWithLimit = mutation({
     const now = Date.now();
     const rollup = await loadRollup(ctx, args.scope, args.meter, args.subjectRef, args.period);
     guardOpen(rollup);
+    if (await alreadySeen(ctx, args.scope, args.meter, args.idempotencyKey)) {
+      return { recorded: false as const, reason: "duplicate" as const };
+    }
     const base = rollup?.value ?? 0;
     const projected = applyAggregation(meter.aggregation, base, args.quantity);
     if (projected > args.limit) {
@@ -252,9 +293,7 @@ export const recordWithLimit = mutation({
         limit: args.limit,
       };
     }
-    if (await dedupe(ctx, args.scope, args.meter, args.idempotencyKey, now)) {
-      return { recorded: false as const, reason: "duplicate" as const };
-    }
+    await dedupe(ctx, args.scope, args.meter, args.idempotencyKey, now);
     await ctx.db.insert("records", {
       scope: args.scope,
       meterKey: args.meter,
@@ -404,6 +443,7 @@ export const reset = mutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
+    guardBatch(args.batch);
     const records = await ctx.db
       .query("records")
       .withIndex("by_scope_meter_subject_period", (q) =>
@@ -445,6 +485,7 @@ export const eraseSubject = mutation({
   args: { scope: v.string(), subjectRef: v.string(), batch: v.number() },
   returns: v.number(),
   handler: async (ctx, args) => {
+    guardBatch(args.batch);
     let removed = 0;
     const records = await ctx.db
       .query("records")
@@ -487,6 +528,10 @@ export const pruneRecords = mutation({
   args: { before: v.number(), batch: v.number() },
   returns: v.number(),
   handler: async (ctx, args) => {
+    guardBatch(args.batch);
+    if (!Number.isFinite(args.before)) {
+      throw new ConvexError({ code: "INVALID_BEFORE", message: "before must be finite" });
+    }
     const stale = await ctx.db
       .query("records")
       .withIndex("by_recorded", (q) => q.lt("recordedAt", args.before))
@@ -513,6 +558,10 @@ export const pruneSeen = mutation({
   args: { before: v.number(), batch: v.number() },
   returns: v.number(),
   handler: async (ctx, args) => {
+    guardBatch(args.batch);
+    if (!Number.isFinite(args.before)) {
+      throw new ConvexError({ code: "INVALID_BEFORE", message: "before must be finite" });
+    }
     const stale = await ctx.db
       .query("seen")
       .withIndex("by_seen", (q) => q.lt("seenAt", args.before))

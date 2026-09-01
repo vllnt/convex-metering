@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Return `duplicate` before quota projection for retried limited records, even when later usage
+  would now exceed the supplied limit.
+- Reject negative or non-finite quota limits and unsafe maintenance batch/cutoff values, preventing
+  stalled self-scheduling loops and oversized transactions.
+
 ### Changed
 
 - Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a

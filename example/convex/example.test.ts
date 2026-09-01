@@ -354,7 +354,32 @@ describe("metering — recordWithLimit (atomic enforcement)", () => {
     ).toMatchObject({ recorded: true, value: 5 });
   });
 
-  test("recordWithLimit validates quantity, meter, and the gauge guard", async () => {
+  test("a duplicate stays a duplicate even when the current projection exceeds its limit", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api", aggregation: "sum" });
+    const original = {
+      meter: "api",
+      subjectRef: "o",
+      quantity: 3,
+      limit: 10,
+      period: "p",
+      idempotencyKey: "same-delivery",
+    };
+    expect(await t.mutation(api.example.recordWithLimit, original)).toMatchObject({
+      recorded: true,
+    });
+    await t.mutation(api.example.record, {
+      meter: "api",
+      subjectRef: "o",
+      quantity: 7,
+      period: "p",
+    });
+    expect(
+      await t.mutation(api.example.recordWithLimit, { ...original, limit: 1 }),
+    ).toEqual({ recorded: false, reason: "duplicate" });
+  });
+
+  test("recordWithLimit validates quantity, limit, meter, and the gauge guard", async () => {
     const t = setup();
     await expect(
       t.mutation(api.example.recordWithLimit, {
@@ -375,6 +400,17 @@ describe("metering — recordWithLimit (atomic enforcement)", () => {
         period: "p",
       }),
     ).rejects.toThrow();
+    for (const limit of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(
+        t.mutation(api.example.recordWithLimit, {
+          meter: "api",
+          subjectRef: "o",
+          quantity: 1,
+          limit,
+          period: "p",
+        }),
+      ).rejects.toThrow(/INVALID_LIMIT|non-negative finite/);
+    }
     await t.mutation(api.example.defineMeter, { key: "gauge", aggregation: "max" });
     await expect(
       t.mutation(api.example.recordWithLimit, {
@@ -474,6 +510,18 @@ describe("metering — reset (batched)", () => {
     ).toBeNull();
   });
 
+  test.each([0, -1, 1.5, 501, Number.NaN])("reset rejects invalid batch %s", async (batch) => {
+    const t = setup();
+    await expect(
+      t.mutation(api.example.reset, {
+        meter: "api",
+        subjectRef: "o",
+        period: "p",
+        batch,
+      }),
+    ).rejects.toThrow(/INVALID_BATCH|integer between/);
+  });
+
   test("reset on a period with no usage returns 0", async () => {
     const t = setup();
     await t.mutation(api.example.defineMeter, { key: "api" });
@@ -496,6 +544,13 @@ describe("metering — eraseSubject (GDPR)", () => {
     expect(await t.query(api.example.listSubjectUsage, { subjectRef: "o" })).toEqual([]);
   });
 
+  test("eraseSubject rejects an invalid batch", async () => {
+    const t = setup();
+    await expect(
+      t.mutation(api.example.eraseSubject, { subjectRef: "o", batch: 0 }),
+    ).rejects.toThrow(/INVALID_BATCH|integer between/);
+  });
+
   test("erasing an unknown subject removes nothing (0)", async () => {
     const t = setup();
     expect(await t.mutation(api.example.eraseSubject, { subjectRef: "ghost", batch: 200 })).toBe(0);
@@ -506,6 +561,22 @@ describe("metering — pruneRecords / pruneSeen (bounded, self-rescheduling)", (
   test("prune with the default batch on an empty table returns 0", async () => {
     const t = setup();
     expect(await t.mutation(api.example.pruneRecordsDefaults, { before: 9_999 })).toBe(0);
+  });
+
+  test("prune operations reject unsafe batches and non-finite cutoffs", async () => {
+    const t = setup();
+    await expect(
+      t.mutation(api.example.pruneRecords, { before: 1, batch: 0 }),
+    ).rejects.toThrow(/INVALID_BATCH|integer between/);
+    await expect(
+      t.mutation(api.example.pruneSeen, { before: 1, batch: 501 }),
+    ).rejects.toThrow(/INVALID_BATCH|integer between/);
+    await expect(
+      t.mutation(api.example.pruneRecords, { before: Number.NaN, batch: 1 }),
+    ).rejects.toThrow(/INVALID_BEFORE|finite/);
+    await expect(
+      t.mutation(api.example.pruneSeen, { before: Number.POSITIVE_INFINITY, batch: 1 }),
+    ).rejects.toThrow(/INVALID_BEFORE|finite/);
   });
 
   test("pruneRecords self-reschedules on a full batch and clears the tail", async () => {
