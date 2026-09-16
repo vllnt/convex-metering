@@ -2,7 +2,7 @@
 
 > Metered usage records — idempotent usage events rolled up per billing period, as a Convex component
 
-`@vllnt/convex-metering` is a publishable Convex component. It targets `convex@^1.41.0`. It stores
+`@vllnt/convex-metering` is a publishable Convex component. It targets `convex@^1.45.0`. It stores
 four sandboxed tables — `meters` (definition: an `aggregation` rule of `sum`/`max`/`last` + display
 `unit`, locked once usage exists), `records` (append-only raw usage events + optional `actorRef`),
 `seen` (the idempotency-key ledger, **separate from `records`** so pruning audit never re-opens a
@@ -17,6 +17,16 @@ batches; `pruneRecords` and `pruneSeen` retain records and dedup keys on indepen
 is an opaque host string (no date parsing); record integer minor-units for money precision; time is
 server-sourced. The component owns accurate, idempotent usage accounting; the host owns the meter
 meaning, the opaque `subjectRef`/`actorRef`, period bucketing, pricing, precision, retention, and auth.
+
+The README/API follow current `@canary`. Client defaults: `defaultScope:
+"global"`, `defaultPeriod: "all"`; meter defaults: `aggregation: "sum"`, `unit:
+""`. Retry keys are optional and scoped to `(scope, meter)`, not subject/period.
+Pruning seen keys removes replay protection. Prune methods span all scopes in a
+mount. Cleanup batches default to 200, integer 1–500. `verify` returns exactly
+`{ rollupValue, rollupCount, recomputedValue, recordsRemaining, consistent }`;
+consistent compares values only and full reconciliation requires complete history,
+not merely a positive remaining count. List/verify reads are not paginated.
+Named mounts isolate state; the host must authorize scopes and subjects.
 
 ## Docs
 
@@ -36,4 +46,3 @@ meaning, the opaque `subjectRef`/`actorRef`, period bucketing, pricing, precisio
 - [Security Policy](SECURITY.md): Vulnerability reporting policy
 - [Code of Conduct](CODE_OF_CONDUCT.md): Community participation guidelines
 - [License](LICENSE): MIT license
-- [Full source bundle](llms-full.txt): Aggregated README, changelog, API docs, and key source files
