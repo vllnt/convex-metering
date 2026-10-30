@@ -15,6 +15,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Clarify installation, usage, and idempotency documentation; retain `llms.txt`
+  as the single maintained LLM index and remove the generated `llms-full.txt`
+  bundle.
 - Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a
   dedicated codegen script.
 - Refresh all direct dependencies to their latest compatible releases for canary validation.
