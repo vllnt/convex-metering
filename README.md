@@ -219,6 +219,22 @@ Tests use the simulated `convex-test` backend (`@edge-runtime/vm`), not a real
 Convex deployment; they do not prove production concurrency or scheduler
 delivery.
 
+### Testing your app
+
+`@vllnt/convex-metering/test` exports `register(t, name = "metering")` to mount
+the component in a `convex-test` instance. It needs `convex-test` and `vitest`
+(with Vite's `import.meta.glob`) in the consuming app:
+
+```ts
+/// <reference types="vite/client" />
+import { convexTest } from "convex-test";
+import { register } from "@vllnt/convex-metering/test";
+import schema from "./schema";
+
+const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+register(t);
+```
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).

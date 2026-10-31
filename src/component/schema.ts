@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { aggregation } from "./validators";
+import { aggregation } from "./validators.js";
 
 /**
  * Sandboxed tables — the metering ledger's own concern. No host tables are
