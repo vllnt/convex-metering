@@ -59,7 +59,7 @@ export function useUsage(
     ...view,
     limit,
     remaining: Math.max(0, limit - view.value),
-    fraction: limit > 0 ? view.value / limit : 0,
+    fraction: limit > 0 ? Math.min(1, view.value / limit) : 0,
     exceeded: view.value > limit,
   };
 }

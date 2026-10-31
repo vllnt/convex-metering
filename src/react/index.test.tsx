@@ -66,7 +66,7 @@ describe("useUsage", () => {
   test("with a limit → exceeded when over", () => {
     useQueryMock.mockReturnValue({ value: 12000, count: 9, closed: false });
     const { result } = renderHook(() => useUsage(usageRef, args, { limit: 10000 }));
-    expect(result.current).toMatchObject({ remaining: 0, exceeded: true });
+    expect(result.current).toMatchObject({ remaining: 0, fraction: 1, exceeded: true });
   });
 
   test("limit of 0 → fraction 0", () => {
