@@ -1,13 +1,13 @@
 import { ConvexError, v } from "convex/values";
-import { query } from "./_generated/server";
-import { applyAggregation } from "../shared";
+import { query } from "./_generated/server.js";
+import { applyAggregation } from "../shared.js";
 import {
   meterDef,
   subjectUsageEntry,
   usageEntry,
   usageProjection,
   verifyResult,
-} from "./validators";
+} from "./validators.js";
 
 /** The meter definition for `(scope, key)`, or `null` if none exists. */
 export const getMeter = query({
