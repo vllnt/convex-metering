@@ -682,3 +682,134 @@ describe("metering — host-side billing (boundary)", () => {
     ).toBeNull();
   });
 });
+
+describe("metering — counter correctness hardening", () => {
+  test("a sum that would overflow to Infinity is rejected and leaves the rollup intact", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "m", aggregation: "sum" });
+    const big = Number.MAX_VALUE;
+    await t.mutation(api.example.record, { meter: "m", subjectRef: "s", quantity: big, period: "p" });
+    await expect(
+      t.mutation(api.example.record, { meter: "m", subjectRef: "s", quantity: big, period: "p" }),
+    ).rejects.toThrow(/QUANTITY_OVERFLOW/);
+    await expect(
+      t.mutation(api.example.adjust, { meter: "m", subjectRef: "s", delta: big, period: "p" }),
+    ).rejects.toThrow(/QUANTITY_OVERFLOW/);
+    // recordWithLimit cannot be pushed to Infinity either: it reports limit_exceeded.
+    expect(
+      await t.mutation(api.example.recordWithLimit, {
+        meter: "m",
+        subjectRef: "s",
+        quantity: big,
+        limit: big,
+        period: "p",
+      }),
+    ).toMatchObject({ recorded: false, reason: "limit_exceeded" });
+    expect(await t.query(api.example.usage, { meter: "m", subjectRef: "s", period: "p" })).toEqual({
+      value: big,
+      count: 1,
+      closed: false,
+    });
+  });
+
+  test("NaN, Infinity and negative amounts never reach the rollup", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "m", aggregation: "sum" });
+    for (const quantity of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1]) {
+      await expect(
+        t.mutation(api.example.record, { meter: "m", subjectRef: "s", quantity, period: "p" }),
+      ).rejects.toThrow(/INVALID_QUANTITY/);
+    }
+    for (const delta of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      await expect(
+        t.mutation(api.example.adjust, { meter: "m", subjectRef: "s", delta, period: "p" }),
+      ).rejects.toThrow(/INVALID_QUANTITY/);
+    }
+    expect(await t.query(api.example.usage, { meter: "m", subjectRef: "s", period: "p" })).toBeNull();
+  });
+
+  test("empty identifiers are rejected on writes", async () => {
+    const t = setup();
+    await expect(
+      t.mutation(api.example.defineMeter, { key: "", aggregation: "sum" }),
+    ).rejects.toThrow(/INVALID_ARGUMENT/);
+    await t.mutation(api.example.defineMeter, { key: "m", aggregation: "sum" });
+    const base = { meter: "m", subjectRef: "s", period: "p" };
+    for (const bad of [{ subjectRef: "" }, { period: "" }, { meter: "" }, { idempotencyKey: "" }]) {
+      await expect(
+        t.mutation(api.example.record, { ...base, quantity: 1, ...bad }),
+      ).rejects.toThrow(/INVALID_ARGUMENT/);
+      await expect(
+        t.mutation(api.example.recordWithLimit, { ...base, quantity: 1, limit: 5, ...bad }),
+      ).rejects.toThrow(/INVALID_ARGUMENT/);
+      await expect(
+        t.mutation(api.example.adjust, { ...base, delta: 1, ...bad }),
+      ).rejects.toThrow(/INVALID_ARGUMENT/);
+    }
+  });
+
+  test("concurrent writes keep value and count exact; duplicate keys count once", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "m", aggregation: "sum" });
+    await Promise.all([
+      ...Array.from({ length: 20 }, () =>
+        t.mutation(api.example.record, { meter: "m", subjectRef: "s", quantity: 2, period: "p" }),
+      ),
+      ...Array.from({ length: 5 }, () =>
+        t.mutation(api.example.record, {
+          meter: "m",
+          subjectRef: "s",
+          quantity: 100,
+          period: "p",
+          idempotencyKey: "same",
+        }),
+      ),
+    ]);
+    expect(await t.query(api.example.usage, { meter: "m", subjectRef: "s", period: "p" })).toEqual({
+      value: 140,
+      count: 21,
+      closed: false,
+    });
+    expect(await t.query(api.example.verify, { meter: "m", subjectRef: "s", period: "p" })).toMatchObject({
+      consistent: true,
+      recordsRemaining: 21,
+    });
+  });
+
+  test("concurrent recordWithLimit never overshoots the limit", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "m", aggregation: "sum" });
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        t.mutation(api.example.recordWithLimit, {
+          meter: "m",
+          subjectRef: "s",
+          quantity: 3,
+          limit: 10,
+          period: "p",
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.recorded)).toHaveLength(3);
+    expect(await t.query(api.example.usage, { meter: "m", subjectRef: "s", period: "p" })).toMatchObject({
+      value: 9,
+      count: 3,
+    });
+  });
+
+  test("periods are independent buckets and closing one leaves the next open", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "m", aggregation: "sum" });
+    const a = { meter: "m", subjectRef: "s" };
+    await t.mutation(api.example.record, { ...a, quantity: 5, period: "2026-06" });
+    await t.mutation(api.example.closePeriod, { ...a, period: "2026-06" });
+    await t.mutation(api.example.record, { ...a, quantity: 7, period: "2026-07" });
+    await expect(
+      t.mutation(api.example.record, { ...a, quantity: 1, period: "2026-06" }),
+    ).rejects.toThrow(/PERIOD_CLOSED/);
+    expect(await t.query(api.example.listUsage, a)).toEqual([
+      { period: "2026-06", value: 5, count: 1, closed: true },
+      { period: "2026-07", value: 7, count: 1, closed: false },
+    ]);
+  });
+});

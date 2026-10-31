@@ -53,7 +53,8 @@ records are pruned, while its key is retained. Keys are scoped to
 across that meter. Omit the key and each call records again. `actorRef` is
 stored on the record for the audit trail.
 
-**Throws** `INVALID_QUANTITY` (negative/non-finite), `METER_NOT_FOUND`,
+**Throws** `INVALID_QUANTITY` (negative/non-finite), `INVALID_ARGUMENT` (an empty
+string identifier), `QUANTITY_OVERFLOW`, `METER_NOT_FOUND`,
 `IDEMPOTENCY_NOT_SUPPORTED` (an `idempotencyKey` on a non-`sum` gauge),
 `PERIOD_CLOSED` (the period was frozen).
 
@@ -74,7 +75,8 @@ Appends a reversing record and applies the delta to the rollup, which never goes
 negative. Pruning records does not change that rollup. Retry-deduplicated only
 when an `idempotencyKey` is supplied and retained.
 
-**Throws** `INVALID_QUANTITY` (non-finite `delta`), `METER_NOT_FOUND`,
+**Throws** `INVALID_QUANTITY` (non-finite `delta`), `INVALID_ARGUMENT`,
+`QUANTITY_OVERFLOW`, `METER_NOT_FOUND`,
 `ADJUST_REQUIRES_SUM`, `PERIOD_CLOSED`, `ADJUST_BELOW_ZERO` (the correction
 would make the rollup negative).
 
@@ -145,6 +147,10 @@ and remains subject to Convex read limits.
 | --------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
 | `INVALID_BATCH`             | Cleanup methods                                    | Batch is not an integer in 1–500.                      |
 | `INVALID_QUANTITY`          | `record` / `recordWithLimit` / `adjust`            | `quantity` negative/non-finite, or `delta` non-finite. |
+| `INVALID_LIMIT`             | `recordWithLimit`                                  | `limit` negative/non-finite.                           |
+| `INVALID_BEFORE`            | `pruneRecords` / `pruneSeen`                       | `before` is not finite.                                |
+| `INVALID_ARGUMENT`          | `defineMeter` / `record` / `recordWithLimit` / `adjust` | An identifier (`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey`) is an empty string. |
+| `QUANTITY_OVERFLOW`         | `record` / `adjust`                                | The rollup would exceed the largest finite number.     |
 | `METER_NOT_FOUND`           | `record` / `recordWithLimit` / `adjust` / `verify` | No meter defined for `(scope, meter)`.                 |
 | `IDEMPOTENCY_NOT_SUPPORTED` | `record` / `recordWithLimit`                       | An `idempotencyKey` on a non-`sum` (gauge) meter.      |
 | `PERIOD_CLOSED`             | `record` / `recordWithLimit` / `adjust`            | The period was frozen by `closePeriod`.                |

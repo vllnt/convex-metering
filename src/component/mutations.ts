@@ -1,10 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import { api } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
-import type { MutationCtx } from "./_generated/server";
-import { mutation } from "./_generated/server";
-import { applyAggregation } from "../shared";
-import { aggregation, limitResult, recordResult } from "./validators";
+import { api } from "./_generated/api.js";
+import type { Doc } from "./_generated/dataModel.js";
+import type { MutationCtx } from "./_generated/server.js";
+import { mutation } from "./_generated/server.js";
+import { applyAggregation } from "../shared.js";
+import { aggregation, limitResult, recordResult } from "./validators.js";
 
 /** Load a meter or throw `METER_NOT_FOUND`. */
 async function loadMeter(
@@ -51,6 +51,28 @@ function guardOpen(rollup: Doc<"rollups"> | null): void {
     throw new ConvexError({
       code: "PERIOD_CLOSED",
       message: "this period is closed; record into the next open period",
+    });
+  }
+}
+
+/** Reject any empty-string argument (a likely host bug that would silently bucket usage together). */
+function guardNonEmpty(fields: Record<string, unknown>): void {
+  for (const [name, value] of Object.entries(fields)) {
+    if (value === "") {
+      throw new ConvexError({
+        code: "INVALID_ARGUMENT",
+        message: `${name} must not be an empty string`,
+      });
+    }
+  }
+}
+
+/** Reject a rollup that would leave the finite float range (sum overflow to Infinity). */
+function guardFinite(value: number): void {
+  if (!Number.isFinite(value)) {
+    throw new ConvexError({
+      code: "QUANTITY_OVERFLOW",
+      message: "the rollup would exceed the largest finite number",
     });
   }
 }
@@ -128,6 +150,7 @@ export const defineMeter = mutation({
   args: { scope: v.string(), key: v.string(), aggregation, unit: v.string() },
   returns: v.object({ created: v.boolean() }),
   handler: async (ctx, args) => {
+    guardNonEmpty({ scope: args.scope, key: args.key });
     const existing = await ctx.db
       .query("meters")
       .withIndex("by_scope_key", (q) =>
@@ -195,6 +218,7 @@ export const record = mutation({
         message: "quantity must be a non-negative finite number",
       });
     }
+    guardNonEmpty(args);
     const meter = await loadMeter(ctx, args.scope, args.meter);
     if (args.idempotencyKey !== undefined && meter.aggregation !== "sum") {
       throw new ConvexError({
@@ -208,6 +232,11 @@ export const record = mutation({
     if (await dedupe(ctx, args.scope, args.meter, args.idempotencyKey, now)) {
       return { recorded: false as const, reason: "duplicate" as const };
     }
+    const value =
+      rollup === null
+        ? args.quantity
+        : applyAggregation(meter.aggregation, rollup.value, args.quantity);
+    guardFinite(value);
     await ctx.db.insert("records", {
       scope: args.scope,
       meterKey: args.meter,
@@ -224,13 +253,12 @@ export const record = mutation({
         meterKey: args.meter,
         subjectRef: args.subjectRef,
         period: args.period,
-        value: args.quantity,
+        value,
         count: 1,
         updatedAt: now,
       });
-      return { recorded: true as const, value: args.quantity, count: 1 };
+      return { recorded: true as const, value, count: 1 };
     }
-    const value = applyAggregation(meter.aggregation, rollup.value, args.quantity);
     const count = rollup.count + 1;
     await ctx.db.patch("rollups", rollup._id, { value, count, updatedAt: now });
     return { recorded: true as const, value, count };
@@ -270,6 +298,7 @@ export const recordWithLimit = mutation({
         message: "limit must be a non-negative finite number",
       });
     }
+    guardNonEmpty(args);
     const meter = await loadMeter(ctx, args.scope, args.meter);
     if (args.idempotencyKey !== undefined && meter.aggregation !== "sum") {
       throw new ConvexError({
@@ -353,6 +382,7 @@ export const adjust = mutation({
         message: "delta must be a finite number",
       });
     }
+    guardNonEmpty(args);
     const meter = await loadMeter(ctx, args.scope, args.meter);
     if (meter.aggregation !== "sum") {
       throw new ConvexError({
@@ -367,6 +397,7 @@ export const adjust = mutation({
       return { recorded: false as const, reason: "duplicate" as const };
     }
     const newValue = (rollup?.value ?? 0) + args.delta;
+    guardFinite(newValue);
     if (newValue < 0) {
       throw new ConvexError({
         code: "ADJUST_BELOW_ZERO",
