@@ -4,55 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - Unreleased
 
 ### Fixed
 
-- Return `duplicate` before quota projection for retried limited records, even when later usage
-  would now exceed the supplied limit.
-- Reject negative or non-finite quota limits and unsafe maintenance batch/cutoff values, preventing
-  stalled self-scheduling loops and oversized transactions.
+- Reject a `sum` rollup that would overflow to `Infinity` (`QUANTITY_OVERFLOW`) in `record` and
+  `adjust`; previously the rollup silently became `Infinity` and could not be corrected.
+- Reject empty-string `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` and `actorRef` on
+  `defineMeter`, `record`, `recordWithLimit` and `adjust` (`INVALID_ARGUMENT`) instead of silently
+  bucketing usage under an empty key.
+- `useUsage` clamps `fraction` to its documented `0..1` range when usage is over the limit.
+- `@vllnt/convex-metering/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
+  relative imports, Vite client types referenced).
 
 ### Changed
 
-- Clarify installation, usage, and idempotency documentation; retain `llms.txt`
-  as the single maintained LLM index and remove the generated `llms-full.txt`
-  bundle.
-- Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a
-  dedicated codegen script.
-- Refresh all direct dependencies to their latest compatible releases for canary validation.
-- Require `convex@^1.45.0` and update `convex-test` to `^0.0.56`.
+- Clarify installation, usage, and idempotency documentation; retain `llms.txt` as the single
+  maintained LLM index and remove the generated `llms-full.txt` bundle. Document the `/test` entry
+  and the full error-code table.
+- Releases run only from CI: canary from `main`, `@latest` from a `vX.Y.Z` tag, with npm trusted
+  publishing and provenance. Dependencies refreshed; pnpm 10 with a release-age gate.
 
-### Added
-
-- Optional `@vllnt/convex-metering/react` entry — `useUsage` (a live usage meter deriving
-  `remaining`/`fraction`/`exceeded` from an optional `limit`) and `useUsageList`. Thin `useQuery`
-  wrappers over the host's re-exported refs; `react` is an optional peer dep; render-tested in jsdom at 100%.
-- `adjust` — signed corrections (refund/credit/void) on `sum` meters; appends a reversing record,
-  keeps the rollup equal to the sum of records and never negative (`ADJUST_BELOW_ZERO`).
-- `recordWithLimit` — atomic check-and-record against a `limit` (closes the read-then-write overage
-  race); returns `limit_exceeded` without recording when it would cross.
-- `closePeriod` + `closed` on the usage reads — freeze a billed period so a late event can't restate
-  it (`record`/`adjust`/`recordWithLimit` then throw `PERIOD_CLOSED`).
-- `eraseSubject` (GDPR, across all meters/periods), `listMeters`, `listSubjectUsage`, and `verify`
-  (reconcile the rollup against surviving records). `reset` is now bounded + self-rescheduling
-  (returns a count) and `pruneSeen` prunes the idempotency ledger. Optional `actorRef` on records.
-
-### Changed
-
-- **Idempotency dedup moved to a dedicated `seen` table.** A meter's aggregation is now **locked**
-  once usage exists (`AGGREGATION_LOCKED`), and an `idempotencyKey` on a non-`sum` gauge is rejected
-  (`IDEMPOTENCY_NOT_SUPPORTED`).
-
-### Fixed
-
-- **Prune-vs-dedup double-count.** Dedup previously read the `records` table that `pruneRecords`
-  deletes, so a redelivered event after a prune re-counted the billable rollup. Dedup now lives in the
-  separate `seen` ledger (pruned independently via `pruneSeen`), so pruning audit rows never re-opens
-  a duplicate. The earlier docs ("retried record is a safe no-op", "rollups never touched") implied
-  prune was consequence-free; corrected.
-
-## [0.1.0] - 2026-06-17
+## [0.1.0] - 2026-09-01
 
 ### Added
 
@@ -73,3 +46,35 @@ All notable changes to this project are documented here. The format is based on
 - Fully typed end to end — quantities, periods, units, and refs are concrete types; no `v.any()`.
 - `record` rejects a negative or non-finite `quantity` with `INVALID_QUANTITY`, and an undefined
   meter with `METER_NOT_FOUND`.
+- Optional `@vllnt/convex-metering/react` entry — `useUsage` (a live usage meter deriving
+  `remaining`/`fraction`/`exceeded` from an optional `limit`) and `useUsageList`. Thin `useQuery`
+  wrappers over the host's re-exported refs; `react` is an optional peer dep; render-tested in jsdom at 100%.
+- `adjust` — signed corrections (refund/credit/void) on `sum` meters; appends a reversing record,
+  keeps the rollup equal to the sum of records and never negative (`ADJUST_BELOW_ZERO`).
+- `recordWithLimit` — atomic check-and-record against a `limit` (closes the read-then-write overage
+  race); returns `limit_exceeded` without recording when it would cross.
+- `closePeriod` + `closed` on the usage reads — freeze a billed period so a late event can't restate
+  it (`record`/`adjust`/`recordWithLimit` then throw `PERIOD_CLOSED`).
+- `eraseSubject` (GDPR, across all meters/periods), `listMeters`, `listSubjectUsage`, and `verify`
+  (reconcile the rollup against surviving records). `reset` is now bounded + self-rescheduling
+  (returns a count) and `pruneSeen` prunes the idempotency ledger. Optional `actorRef` on records.
+
+### Changed
+
+- **Idempotency dedup moved to a dedicated `seen` table.** A meter's aggregation is now **locked**
+  once usage exists (`AGGREGATION_LOCKED`), and an `idempotencyKey` on a non-`sum` gauge is rejected
+  (`IDEMPOTENCY_NOT_SUPPORTED`).
+- Treat Convex `_generated` output as CLI-owned and expose a dedicated codegen script.
+- Require `convex@^1.45.0`.
+
+### Fixed
+
+- **Prune-vs-dedup double-count.** Dedup previously read the `records` table that `pruneRecords`
+  deletes, so a redelivered event after a prune re-counted the billable rollup. Dedup now lives in the
+  separate `seen` ledger (pruned independently via `pruneSeen`), so pruning audit rows never re-opens
+  a duplicate. The earlier docs ("retried record is a safe no-op", "rollups never touched") implied
+  prune was consequence-free; corrected.
+- Return `duplicate` before quota projection for retried limited records, even when later usage
+  would now exceed the supplied limit.
+- Reject negative or non-finite quota limits and unsafe maintenance batch/cutoff values, preventing
+  stalled self-scheduling loops and oversized transactions.
