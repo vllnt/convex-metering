@@ -1,6 +1,6 @@
 {
   "name": "@vllnt/convex-metering",
-  "version": "0.2.0",
+  "version": "0.1.1",
   "description": "Metered usage records — idempotent usage events rolled up per billing period, as a Convex component",
   "license": "MIT",
   "type": "module",

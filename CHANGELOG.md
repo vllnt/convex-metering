@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - Unreleased
+## [0.1.1] - Unreleased
 
 ### Fixed
 
@@ -23,7 +23,7 @@ All notable changes to this project are documented here. The format is based on
   maintained LLM index and remove the generated `llms-full.txt` bundle. Document the `/test` entry
   and the full error-code table.
 - Releases run only from CI: canary from `main`, `@latest` from a `vX.Y.Z` tag, with npm trusted
-  publishing and provenance. Dependencies refreshed; pnpm 10 with a release-age gate.
+  publishing and provenance. pnpm 10 with a release-age gate; deepmerge-ts override pinned to 8.0.2.
 
 ## [0.1.0] - 2026-09-01
 
