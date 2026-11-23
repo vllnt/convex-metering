@@ -23,8 +23,7 @@ All notable changes to this project are documented here. The format is based on
 
 - Fewer billed calls and writes: `reset` and `eraseSubject` schedule a follow-up pass only when a
   batch was full; `defineMeter` skips the write when nothing changed; `recordWithLimit` reads the
-  idempotency ledger once. The redundant `meters.by_scope` index is dropped (`by_scope_key` serves
-  `listMeters`, keeping creation order).
+  idempotency ledger once.
 - Clarify installation, usage, and idempotency documentation; retain `llms.txt` as the single
   maintained LLM index and remove the generated `llms-full.txt` bundle. Document the `/test` entry
   and the full error-code table.

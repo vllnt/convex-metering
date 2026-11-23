@@ -23,7 +23,8 @@ export default defineSchema({
     unit: v.string(),
     createdAt: v.number(),
   })
-    .index("by_scope_key", ["scope", "key"]),
+    .index("by_scope_key", ["scope", "key"])
+    .index("by_scope", ["scope"]),
 
   records: defineTable({
     scope: v.string(),

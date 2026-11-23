@@ -150,7 +150,7 @@ describe("defineMeter skips unchanged writes", () => {
     expect(await t.query(api.queries.getMeter, { scope: "s", key: "m" })).toMatchObject({ unit: "calls" });
   });
 
-  test("listMeters keeps creation order without the by_scope index", async () => {
+  test("listMeters keeps creation order", async () => {
     const t = setup();
     for (const key of ["b", "a", "c"]) {
       await t.mutation(api.mutations.defineMeter, { scope: "s", key, aggregation: "sum", unit: "" });
