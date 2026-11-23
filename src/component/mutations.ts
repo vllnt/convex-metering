@@ -195,10 +195,12 @@ export const defineMeter = mutation({
         });
       }
     }
-    await ctx.db.patch("meters", existing._id, {
-      aggregation: args.aggregation,
-      unit: args.unit,
-    });
+    if (existing.aggregation !== args.aggregation || existing.unit !== args.unit) {
+      await ctx.db.patch("meters", existing._id, {
+        aggregation: args.aggregation,
+        unit: args.unit,
+      });
+    }
     return { created: false };
   },
 });
@@ -335,7 +337,14 @@ export const recordWithLimit = mutation({
         limit: args.limit,
       };
     }
-    await dedupe(ctx, args.scope, args.meter, args.idempotencyKey, now);
+    if (args.idempotencyKey !== undefined) {
+      await ctx.db.insert("seen", {
+        scope: args.scope,
+        meterKey: args.meter,
+        idempotencyKey: args.idempotencyKey,
+        seenAt: now,
+      });
+    }
     await ctx.db.insert("records", {
       scope: args.scope,
       meterKey: args.meter,
@@ -466,6 +475,9 @@ export const closePeriod = mutation({
     if (rollup === null) {
       return false;
     }
+    if (rollup.closedAt !== undefined) {
+      return true;
+    }
     await ctx.db.patch("rollups", rollup._id, { closedAt: Date.now() });
     return true;
   },
@@ -501,7 +513,7 @@ export const reset = mutation({
     for (const row of records) {
       await ctx.db.delete("records", row._id);
     }
-    if (records.length > 0) {
+    if (records.length === args.batch) {
       await ctx.scheduler.runAfter(0, api.mutations.reset, {
         scope: args.scope,
         meter: args.meter,
@@ -515,7 +527,7 @@ export const reset = mutation({
     if (rollup !== null) {
       await ctx.db.delete("rollups", rollup._id);
     }
-    return 0;
+    return records.length;
   },
 });
 
@@ -551,7 +563,7 @@ export const eraseSubject = mutation({
       await ctx.db.delete("rollups", row._id);
       removed++;
     }
-    if (removed > 0) {
+    if (records.length === args.batch || rollups.length === args.batch) {
       await ctx.scheduler.runAfter(0, api.mutations.eraseSubject, {
         scope: args.scope,
         subjectRef: args.subjectRef,
