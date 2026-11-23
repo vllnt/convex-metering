@@ -55,7 +55,19 @@ function guardOpen(rollup: Doc<"rollups"> | null): void {
   }
 }
 
-/** Reject any empty-string argument (a likely host bug that would silently bucket usage together). */
+const MAX_STRING_LENGTH = 256;
+
+/** Reject an over-long string argument (bounds row and index-key size). */
+function guardLength(name: string, value: unknown): void {
+  if (typeof value === "string" && value.length > MAX_STRING_LENGTH) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `${name} must be at most ${String(MAX_STRING_LENGTH)} characters`,
+    });
+  }
+}
+
+/** Reject any empty or over-long string argument (an empty one would silently bucket usage together). */
 function guardNonEmpty(fields: Record<string, unknown>): void {
   for (const [name, value] of Object.entries(fields)) {
     if (value === "") {
@@ -64,6 +76,7 @@ function guardNonEmpty(fields: Record<string, unknown>): void {
         message: `${name} must not be an empty string`,
       });
     }
+    guardLength(name, value);
   }
 }
 
@@ -151,6 +164,7 @@ export const defineMeter = mutation({
   returns: v.object({ created: v.boolean() }),
   handler: async (ctx, args) => {
     guardNonEmpty({ scope: args.scope, key: args.key });
+    guardLength("unit", args.unit);
     const existing = await ctx.db
       .query("meters")
       .withIndex("by_scope_key", (q) =>
@@ -182,10 +196,12 @@ export const defineMeter = mutation({
         });
       }
     }
-    await ctx.db.patch("meters", existing._id, {
-      aggregation: args.aggregation,
-      unit: args.unit,
-    });
+    if (existing.aggregation !== args.aggregation || existing.unit !== args.unit) {
+      await ctx.db.patch("meters", existing._id, {
+        aggregation: args.aggregation,
+        unit: args.unit,
+      });
+    }
     return { created: false };
   },
 });
@@ -322,7 +338,14 @@ export const recordWithLimit = mutation({
         limit: args.limit,
       };
     }
-    await dedupe(ctx, args.scope, args.meter, args.idempotencyKey, now);
+    if (args.idempotencyKey !== undefined) {
+      await ctx.db.insert("seen", {
+        scope: args.scope,
+        meterKey: args.meter,
+        idempotencyKey: args.idempotencyKey,
+        seenAt: now,
+      });
+    }
     await ctx.db.insert("records", {
       scope: args.scope,
       meterKey: args.meter,
@@ -453,6 +476,9 @@ export const closePeriod = mutation({
     if (rollup === null) {
       return false;
     }
+    if (rollup.closedAt !== undefined) {
+      return true;
+    }
     await ctx.db.patch("rollups", rollup._id, { closedAt: Date.now() });
     return true;
   },
@@ -488,7 +514,7 @@ export const reset = mutation({
     for (const row of records) {
       await ctx.db.delete("records", row._id);
     }
-    if (records.length > 0) {
+    if (records.length === args.batch) {
       await ctx.scheduler.runAfter(0, api.mutations.reset, {
         scope: args.scope,
         meter: args.meter,
@@ -502,7 +528,7 @@ export const reset = mutation({
     if (rollup !== null) {
       await ctx.db.delete("rollups", rollup._id);
     }
-    return 0;
+    return records.length;
   },
 });
 
@@ -538,7 +564,7 @@ export const eraseSubject = mutation({
       await ctx.db.delete("rollups", row._id);
       removed++;
     }
-    if (removed > 0) {
+    if (records.length === args.batch || rollups.length === args.batch) {
       await ctx.scheduler.runAfter(0, api.mutations.eraseSubject, {
         scope: args.scope,
         subjectRef: args.subjectRef,
