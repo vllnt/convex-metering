@@ -55,19 +55,7 @@ function guardOpen(rollup: Doc<"rollups"> | null): void {
   }
 }
 
-const MAX_STRING_LENGTH = 256;
-
-/** Reject an over-long string argument (bounds row and index-key size). */
-function guardLength(name: string, value: unknown): void {
-  if (typeof value === "string" && value.length > MAX_STRING_LENGTH) {
-    throw new ConvexError({
-      code: "INVALID_ARGUMENT",
-      message: `${name} must be at most ${String(MAX_STRING_LENGTH)} characters`,
-    });
-  }
-}
-
-/** Reject any empty or over-long string argument (an empty one would silently bucket usage together). */
+/** Reject any empty-string argument (a likely host bug that would silently bucket usage together). */
 function guardNonEmpty(fields: Record<string, unknown>): void {
   for (const [name, value] of Object.entries(fields)) {
     if (value === "") {
@@ -76,7 +64,6 @@ function guardNonEmpty(fields: Record<string, unknown>): void {
         message: `${name} must not be an empty string`,
       });
     }
-    guardLength(name, value);
   }
 }
 
@@ -164,7 +151,6 @@ export const defineMeter = mutation({
   returns: v.object({ created: v.boolean() }),
   handler: async (ctx, args) => {
     guardNonEmpty({ scope: args.scope, key: args.key });
-    guardLength("unit", args.unit);
     const existing = await ctx.db
       .query("meters")
       .withIndex("by_scope_key", (q) =>

@@ -7,10 +7,22 @@ import schema from "./schema.js";
 const modules = import.meta.glob("./**/*.ts");
 
 function setup() {
-  return convexTest(schema, modules);
+  return convexTest({ schema, modules, transactionLimits: true });
 }
 
 type T = ReturnType<typeof setup>;
+
+type Limits = { documentsWritten?: number; databaseQueries?: number };
+
+async function closeLimited(t: T, limits: Limits): Promise<boolean> {
+  return t.run(async (ctx) =>
+    ctx.runMutation(
+      api.mutations.closePeriod,
+      { scope: "s", meter: "api", subjectRef: "o", period: "p" },
+      { transactionLimits: limits },
+    ),
+  );
+}
 
 async function scheduledCount(t: T): Promise<number> {
   return t.run(async (ctx) => (await ctx.db.system.query("_scheduled_functions").collect()).length);
@@ -110,43 +122,46 @@ describe("reset / eraseSubject schedule no trailing empty pass", () => {
 });
 
 describe("closePeriod is idempotent", () => {
-  test("a second close keeps the original freeze time", async () => {
+  test("a second close writes nothing and keeps the original freeze time", async () => {
     const t = setup();
     await seed(t, 1);
-    const args = { scope: "s", meter: "api", subjectRef: "o", period: "p" };
     vi.setSystemTime(1000);
-    expect(await t.mutation(api.mutations.closePeriod, args)).toBe(true);
+    expect(await closeLimited(t, {})).toBe(true);
     vi.setSystemTime(5000);
-    expect(await t.mutation(api.mutations.closePeriod, args)).toBe(true);
+    expect(await closeLimited(t, { documentsWritten: 0 })).toBe(true);
     const closedAt = await t.run(async (ctx) => (await ctx.db.query("rollups").first())?.closedAt);
     expect(closedAt).toBe(1000);
   });
 });
 
 describe("defineMeter skips unchanged writes", () => {
-  test("an identical re-define leaves the doc untouched; a unit change patches", async () => {
+  test("an identical re-define writes nothing; a unit change still patches", async () => {
     const t = setup();
     const def = { scope: "s", key: "m", aggregation: "sum" as const, unit: "req" };
     await t.mutation(api.mutations.defineMeter, def);
-    const first = await t.run(async (ctx) => ctx.db.query("meters").first());
-    expect(await t.mutation(api.mutations.defineMeter, def)).toEqual({ created: false });
-    expect(await t.run(async (ctx) => ctx.db.query("meters").first())).toEqual(first);
+    const noWrites = { transactionLimits: { documentsWritten: 0 } };
+    expect(await t.run(async (ctx) => ctx.runMutation(api.mutations.defineMeter, def, noWrites))).toEqual({
+      created: false,
+    });
+    await expect(
+      t.run(async (ctx) => ctx.runMutation(api.mutations.defineMeter, { ...def, unit: "calls" }, noWrites)),
+    ).rejects.toThrow();
     await t.mutation(api.mutations.defineMeter, { ...def, unit: "calls" });
     expect(await t.query(api.queries.getMeter, { scope: "s", key: "m" })).toMatchObject({ unit: "calls" });
   });
 
-  test("listMeters returns a scope's meters ordered by key", async () => {
+  test("listMeters keeps creation order without the by_scope index", async () => {
     const t = setup();
     for (const key of ["b", "a", "c"]) {
       await t.mutation(api.mutations.defineMeter, { scope: "s", key, aggregation: "sum", unit: "" });
     }
     await t.mutation(api.mutations.defineMeter, { scope: "other", key: "z", aggregation: "sum", unit: "" });
-    expect((await t.query(api.queries.listMeters, { scope: "s" })).map((m) => m.key)).toEqual(["a", "b", "c"]);
+    expect((await t.query(api.queries.listMeters, { scope: "s" })).map((m) => m.key)).toEqual(["b", "a", "c"]);
   });
 });
 
 describe("recordWithLimit with an idempotency key", () => {
-  test("records once and dedups the retry", async () => {
+  test("queries the seen ledger once per accepted keyed event and dedups the retry", async () => {
     const t = setup();
     await seed(t, 0);
     const args = {
@@ -158,67 +173,13 @@ describe("recordWithLimit with an idempotency key", () => {
       limit: 10,
       idempotencyKey: "k",
     };
-    expect(await t.mutation(api.mutations.recordWithLimit, args)).toEqual({ recorded: true, value: 2, count: 1 });
+    const threeQueries = { transactionLimits: { databaseQueries: 3 } };
+    expect(await t.run(async (ctx) => ctx.runMutation(api.mutations.recordWithLimit, args, threeQueries))).toEqual({
+      recorded: true,
+      value: 2,
+      count: 1,
+    });
     expect(await t.mutation(api.mutations.recordWithLimit, args)).toEqual({ recorded: false, reason: "duplicate" });
     expect(await t.run(async (ctx) => (await ctx.db.query("seen").collect()).length)).toBe(1);
-  });
-});
-
-describe("string length caps", () => {
-  const long = "x".repeat(257);
-  const max = "x".repeat(256);
-
-  test("a 256-character identifier is accepted", async () => {
-    const t = setup();
-    await t.mutation(api.mutations.defineMeter, { scope: "s", key: max, aggregation: "sum", unit: max });
-    expect(
-      await t.mutation(api.mutations.record, {
-        scope: "s",
-        meter: max,
-        subjectRef: max,
-        quantity: 1,
-        period: max,
-        idempotencyKey: max,
-        actorRef: max,
-      }),
-    ).toMatchObject({ recorded: true });
-  });
-
-  test.each(["subjectRef", "period", "idempotencyKey", "actorRef"])(
-    "record rejects a %s over 256 characters",
-    async (field) => {
-      const t = setup();
-      await seed(t, 0);
-      await expect(
-        t.mutation(api.mutations.record, {
-          scope: "s",
-          meter: "api",
-          subjectRef: "o",
-          quantity: 1,
-          period: "p",
-          [field]: long,
-        }),
-      ).rejects.toThrow(/INVALID_ARGUMENT|at most 256/);
-    },
-  );
-
-  test("defineMeter rejects an over-long key or unit", async () => {
-    const t = setup();
-    await expect(
-      t.mutation(api.mutations.defineMeter, { scope: "s", key: long, aggregation: "sum", unit: "" }),
-    ).rejects.toThrow(/at most 256/);
-    await expect(
-      t.mutation(api.mutations.defineMeter, { scope: "s", key: "k", aggregation: "sum", unit: long }),
-    ).rejects.toThrow(/at most 256/);
-  });
-
-  test("recordWithLimit and adjust reject an over-long subjectRef", async () => {
-    const t = setup();
-    await seed(t, 0);
-    const base = { scope: "s", meter: "api", subjectRef: long, period: "p" };
-    await expect(
-      t.mutation(api.mutations.recordWithLimit, { ...base, quantity: 1, limit: 5 }),
-    ).rejects.toThrow(/at most 256/);
-    await expect(t.mutation(api.mutations.adjust, { ...base, delta: 1 })).rejects.toThrow(/at most 256/);
   });
 });

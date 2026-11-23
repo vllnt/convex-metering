@@ -42,6 +42,7 @@ export const listMeters = query({
       .query("meters")
       .withIndex("by_scope_key", (q) => q.eq("scope", args.scope))
       .collect();
+    rows.sort((a, b) => a._creationTime - b._creationTime);
     return rows.map((row) => ({
       key: row.key,
       scope: row.scope,
