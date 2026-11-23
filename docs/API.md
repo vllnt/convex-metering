@@ -85,14 +85,16 @@ would make the rollup negative).
 `opts`: `{ period?; scope? }`. Freeze a `(meter, subject, period)` so its billed
 value is immutable — later `record`/`adjust`/`recordWithLimit` into it throw
 `PERIOD_CLOSED`. Returns `false` if no usage exists for it. `usage()` then
-reports `closed: true`.
+reports `closed: true`. Closing an already-closed period is a no-op that returns
+`true` and keeps the original freeze time.
 
 ### `reset(ctx, meter, subjectRef, opts?) → number`
 
 `opts`: `{ period?; scope?; batch? }` (`batch` default `200`). Clear a subject's
 usage for one `(meter, period)` — deletes the rollup and raw records in bounded,
 self-rescheduling batches; returns the records removed this pass (0 once
-drained). Idempotency keys in `seen` are kept, so a late replay stays deduped
+drained). A pass that empties the period also deletes the rollup, so another
+pass is scheduled only when the batch was full. Idempotency keys in `seen` are kept, so a late replay stays deduped
 rather than re-counting.
 
 ### `eraseSubject(ctx, subjectRef, opts?) → number`

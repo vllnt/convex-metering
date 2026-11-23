@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `closePeriod` on an already-closed period is a no-op that keeps the original freeze time instead
+  of rewriting it.
 - Reject a `sum` rollup that would overflow to `Infinity` (`QUANTITY_OVERFLOW`) in `record` and
   `adjust`; previously the rollup silently became `Infinity` and could not be corrected.
 - Reject empty-string `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` and `actorRef` on
@@ -19,6 +21,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Fewer billed calls and writes: `reset` and `eraseSubject` schedule a follow-up pass only when a
+  batch was full; `defineMeter` skips the write when nothing changed; `recordWithLimit` reads the
+  idempotency ledger once.
 - Clarify installation, usage, and idempotency documentation; retain `llms.txt` as the single
   maintained LLM index and remove the generated `llms-full.txt` bundle. Document the `/test` entry
   and the full error-code table.
