@@ -64,6 +64,18 @@ function guardNonEmpty(fields: Record<string, unknown>): void {
         message: `${name} must not be an empty string`,
       });
     }
+    guardLength(name, value);
+  }
+}
+
+const MAX_STRING_LENGTH = 256;
+
+function guardLength(name: string, value: unknown): void {
+  if (typeof value === "string" && value.length > MAX_STRING_LENGTH) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `${name} must be at most ${String(MAX_STRING_LENGTH)} characters`,
+    });
   }
 }
 
@@ -151,6 +163,7 @@ export const defineMeter = mutation({
   returns: v.object({ created: v.boolean() }),
   handler: async (ctx, args) => {
     guardNonEmpty({ scope: args.scope, key: args.key });
+    guardLength("unit", args.unit);
     const existing = await ctx.db
       .query("meters")
       .withIndex("by_scope_key", (q) =>

@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Breaking:** reject string arguments longer than 256 characters on `defineMeter`, `record`,
+  `recordWithLimit` and `adjust` (`INVALID_ARGUMENT`), bounding stored row and index-key size.
+  Hosts with longer identifiers must shorten or hash them before upgrading.
 - Reject a `sum` rollup that would overflow to `Infinity` (`QUANTITY_OVERFLOW`) in `record` and
   `adjust`; previously the rollup silently became `Infinity` and could not be corrected.
 - Reject empty-string `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` and `actorRef` on

@@ -149,7 +149,7 @@ and remains subject to Convex read limits.
 | `INVALID_QUANTITY`          | `record` / `recordWithLimit` / `adjust`            | `quantity` negative/non-finite, or `delta` non-finite. |
 | `INVALID_LIMIT`             | `recordWithLimit`                                  | `limit` negative/non-finite.                           |
 | `INVALID_BEFORE`            | `pruneRecords` / `pruneSeen`                       | `before` is not finite.                                |
-| `INVALID_ARGUMENT`          | `defineMeter` / `record` / `recordWithLimit` / `adjust` | An identifier (`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey`) is an empty string. |
+| `INVALID_ARGUMENT`          | `defineMeter` / `record` / `recordWithLimit` / `adjust` | An identifier (`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey`) is an empty string, or a string argument (including `unit`, `actorRef`) is longer than 256 characters. |
 | `QUANTITY_OVERFLOW`         | `record` / `adjust`                                | The rollup would exceed the largest finite number.     |
 | `METER_NOT_FOUND`           | `record` / `recordWithLimit` / `adjust` / `verify` | No meter defined for `(scope, meter)`.                 |
 | `IDEMPOTENCY_NOT_SUPPORTED` | `record` / `recordWithLimit`                       | An `idempotencyKey` on a non-`sum` (gauge) meter.      |
