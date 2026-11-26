@@ -1,7 +1,18 @@
 # API Reference — @vllnt/convex-metering
 
-**Compatibility:** `convex@^1.45.0`; React >=18 is optional. This reference
-follows current `@canary`.
+**Compatibility:** `convex@^1.45.0`; React >=18 is optional. This file ships in
+the npm package at `node_modules/@vllnt/convex-metering/docs/API.md` and matches
+the installed version.
+
+## Entry points
+
+| Import                                              | Exports                                                                                                                                                                  |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@vllnt/convex-metering`                            | `Metering` class; types `MeteringComponent`, `MeteringOptions`, `DefineMeterOptions`, `RecordOptions`, `RecordOutcome`, `LimitOutcome`, `MeterDefinition`, `Usage`, `UsageEntry`, `SubjectUsageEntry`, `VerifyResult`, `Aggregation` |
+| `@vllnt/convex-metering/convex.config`              | the component definition for `app.use(...)`                                                                                                                             |
+| `@vllnt/convex-metering/react`                      | `useUsage`, `useUsageList`, type `UsageView` (see [React hooks](#react-hooks))                                                                                           |
+| `@vllnt/convex-metering/test`                       | `register(t, name = "metering")` for `convex-test` (see [Testing](#testing))                                                                                            |
+| `@vllnt/convex-metering/_generated/component`       | type `ComponentApi` (Convex codegen)                                                                                                                                     |
 
 Construct the client with the mounted component and optional config:
 
@@ -54,16 +65,23 @@ across that meter. Omit the key and each call records again. `actorRef` is
 stored on the record for the audit trail.
 
 **Throws** `INVALID_QUANTITY` (negative/non-finite), `INVALID_ARGUMENT` (an empty
-string identifier), `QUANTITY_OVERFLOW`, `METER_NOT_FOUND`,
+string argument), `QUANTITY_OVERFLOW`, `METER_NOT_FOUND`,
 `IDEMPOTENCY_NOT_SUPPORTED` (an `idempotencyKey` on a non-`sum` gauge),
 `PERIOD_CLOSED` (the period was frozen).
 
 ### `recordWithLimit(ctx, meter, subjectRef, quantity, limit, opts?) → LimitOutcome`
 
+`opts`: `{ period?; idempotencyKey?; actorRef?; scope? }`.
+
 Atomic check-and-record: records only if it would not push the period over
 `limit`, in one serializable mutation (no read-then-write race). Returns the
 recorded outcome, `duplicate`, or
-`{ recorded: false; reason: "limit_exceeded"; value; limit }`.
+`{ recorded: false; reason: "limit_exceeded"; value; limit }`. A duplicate key
+returns `duplicate` before the limit is checked.
+
+**Throws** `INVALID_QUANTITY`, `INVALID_LIMIT` (negative/non-finite `limit`),
+`INVALID_ARGUMENT`, `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`,
+`PERIOD_CLOSED`.
 
 ### `adjust(ctx, meter, subjectRef, delta, opts?) → RecordOutcome`
 
@@ -100,8 +118,8 @@ rather than re-counting.
 ### `eraseSubject(ctx, subjectRef, opts?) → number`
 
 `opts`: `{ scope?; batch? }`. Erase a subject across **every meter and period**
-(records + rollups), bounded + self-rescheduling. The GDPR right-to-erasure
-primitive. `seen` (idempotency keys, no subject PII) is left intact.
+(records + rollups), bounded + self-rescheduling; returns the records and
+rollups removed this pass. The GDPR right-to-erasure primitive. `seen` (idempotency keys, no subject PII) is left intact.
 
 ### `pruneRecords(ctx, before, batch?) → number` · `pruneSeen(ctx, before, batch?) → number`
 
@@ -151,7 +169,7 @@ and remains subject to Convex read limits.
 | `INVALID_QUANTITY`          | `record` / `recordWithLimit` / `adjust`            | `quantity` negative/non-finite, or `delta` non-finite. |
 | `INVALID_LIMIT`             | `recordWithLimit`                                  | `limit` negative/non-finite.                           |
 | `INVALID_BEFORE`            | `pruneRecords` / `pruneSeen`                       | `before` is not finite.                                |
-| `INVALID_ARGUMENT`          | `defineMeter` / `record` / `recordWithLimit` / `adjust` | An identifier (`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey`) is an empty string. |
+| `INVALID_ARGUMENT`          | `defineMeter` / `record` / `recordWithLimit` / `adjust` | A string argument (`scope`, `key`, `meter`, `subjectRef`, `period`, `idempotencyKey`, `actorRef`) is empty. |
 | `QUANTITY_OVERFLOW`         | `record` / `adjust`                                | The rollup would exceed the largest finite number.     |
 | `METER_NOT_FOUND`           | `record` / `recordWithLimit` / `adjust` / `verify` | No meter defined for `(scope, meter)`.                 |
 | `IDEMPOTENCY_NOT_SUPPORTED` | `record` / `recordWithLimit`                       | An `idempotencyKey` on a non-`sum` (gauge) meter.      |
@@ -159,3 +177,28 @@ and remains subject to Convex read limits.
 | `AGGREGATION_LOCKED`        | `defineMeter`                                      | An aggregation change after usage exists.              |
 | `ADJUST_REQUIRES_SUM`       | `adjust`                                           | A non-`sum` meter.                                     |
 | `ADJUST_BELOW_ZERO`         | `adjust`                                           | The correction would make the rollup negative.         |
+
+## React hooks
+
+`@vllnt/convex-metering/react` (optional peer `react` >=18). Each hook wraps
+`useQuery` over a query reference **your app exports** (a host wrapper around
+`usage` / `listUsage` with its own auth); the component never imports your `api`.
+
+### `useUsage(usageRef, args, opts?) → UsageView`
+
+`args`: `{ meter; subjectRef; period; scope? }`; `opts`: `{ limit? }`. Returns
+`{ isLoading, value, count, closed }` (`value`/`count` are `0` and `closed` is
+`false` while loading or when nothing is recorded). With a `limit` it also
+returns `limit`, `remaining` (`max(0, limit - value)`), `fraction` (`0..1`;
+`0` when `limit` is `0`) and `exceeded` (`value > limit`).
+
+### `useUsageList(listUsageRef, args) → UsageEntry[] | undefined`
+
+`args`: `{ meter; subjectRef; scope? }`. `undefined` while loading.
+
+## Testing
+
+`@vllnt/convex-metering/test` exports `register(t, name = "metering")`, which
+mounts the component in a `convex-test` instance. It ships as TypeScript source
+and needs `convex-test` and `vitest` (Vite's `import.meta.glob`) in the
+consuming app.

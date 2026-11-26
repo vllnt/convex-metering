@@ -18,7 +18,7 @@ is an opaque host string (no date parsing); record integer minor-units for money
 server-sourced. The component owns accurate, idempotent usage accounting; the host owns the meter
 meaning, the opaque `subjectRef`/`actorRef`, period bucketing, pricing, precision, retention, and auth.
 
-The README/API follow current `@canary`. Client defaults: `defaultScope:
+Client defaults: `defaultScope:
 "global"`, `defaultPeriod: "all"`; meter defaults: `aggregation: "sum"`, `unit:
 ""`. Retry keys are optional and scoped to `(scope, meter)`, not subject/period.
 Pruning seen keys removes replay protection. Prune methods span all scopes in a
@@ -28,21 +28,30 @@ consistent compares values only and full reconciliation requires complete histor
 not merely a positive remaining count. List/verify reads are not paginated.
 Named mounts isolate state; the host must authorize scopes and subjects.
 
+## For coding agents
+
+The docs are bundled at `node_modules/@vllnt/convex-metering/docs/`, together with `README.md`,
+`CHANGELOG.md` and this file. They match the installed version. Read them before writing code.
+
 ## Docs
 
-- [README](README.md): Project overview, installation, usage examples, architecture
-- [API Reference](docs/API.md): Public class methods, return shapes, input validation, error codes
-- [Changelog](CHANGELOG.md): Version history and release notes
-- [Contributing](CONTRIBUTING.md): Development setup, validation commands, release workflow
+- [README](./README.md): Project overview, installation, usage examples, architecture
+- [API Reference](./docs/API.md): Entry points, client methods, return shapes, React hooks, error codes
+- [Changelog](./CHANGELOG.md): Version history and release notes
+- [Contributing](https://github.com/vllnt/convex-metering/blob/main/CONTRIBUTING.md): Development setup, validation commands, release workflow
 
 ## Examples
 
-- [Example component wrapper](example/convex/example.ts): Host-app wrapper functions
-- [Example tests](example/convex/example.test.ts): End-to-end usage coverage with `convex-test`
+- [Example component wrapper](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.ts): Host-app wrapper functions
+- [Example tests](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.test.ts): End-to-end usage coverage with `convex-test`
+
+## Ecosystem
+
+- [vllnt oss](https://oss.vllnt.com/llms.txt): Index of the other vllnt packages
 
 ## Optional
 
-- [AGENTS](AGENTS.md): Canonical agent instructions for this repository
-- [Security Policy](SECURITY.md): Vulnerability reporting policy
-- [Code of Conduct](CODE_OF_CONDUCT.md): Community participation guidelines
-- [License](LICENSE): MIT license
+- [AGENTS](https://github.com/vllnt/convex-metering/blob/main/AGENTS.md): Agent instructions for contributors to this repository
+- [Security Policy](https://github.com/vllnt/convex-metering/blob/main/SECURITY.md): Vulnerability reporting policy
+- [Code of Conduct](https://github.com/vllnt/convex-metering/blob/main/CODE_OF_CONDUCT.md): Community participation guidelines
+- [License](./LICENSE): MIT license

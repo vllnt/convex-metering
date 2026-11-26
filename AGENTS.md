@@ -146,6 +146,7 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
 | Aggregation / idempotency / period / adjust / rollup semantics | `docs/API.md`, Key design decisions above |
 | Any change | `pnpm generate:llms` to validate the `llms.txt` index |
+| Shipped docs (`README.md`, `CHANGELOG.md`, `llms.txt`, `docs/*.md`) | keep them in `package.json` `files` and in the `publish.yml` paths; `llms.txt` links shipped files as `./path` (`pnpm check:package`) |
 
 Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).
 

@@ -68,6 +68,12 @@ Node.js >=18; required peer: `convex@^1.45.0`. React >=18 is optional. The
 default npm channel is stable; use `@vllnt/convex-metering@canary` for the
 current prerelease surface documented here.
 
+## For coding agents
+
+The docs are bundled at `node_modules/@vllnt/convex-metering/docs/`, with
+`README.md`, `CHANGELOG.md` and `llms.txt` at the package root. They match the
+installed version. Read them before writing code.
+
 ## Usage
 
 ```ts
@@ -235,6 +241,19 @@ const t = convexTest(schema, import.meta.glob("./**/*.ts"));
 register(t);
 ```
 
+## Related packages
+
+- [`@vllnt/convex-quota`](https://oss.vllnt.com/packages/convex-quota) — use for
+  allowances that reset on a schedule (calendar, rolling or epoch windows) with
+  a readable remaining amount. Use metering to record what was consumed per
+  billing period.
+- [`@vllnt/convex-wallet`](https://oss.vllnt.com/packages/convex-wallet) — use
+  for prepaid, consumable balances with atomic spend. Use metering for usage you
+  bill afterwards.
+- [`@vllnt/convex-idempotency`](https://oss.vllnt.com/packages/convex-idempotency)
+  — use for exactly-once handling of other retried operations. Metering already
+  deduplicates its own `record`/`adjust` calls by `idempotencyKey`.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -244,11 +263,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 Built by [bntvllnt](https://github.com/bntvllnt) ·
 [bntvllnt.com](https://bntvllnt.com) · [X @bntvllnt](https://x.com/bntvllnt)
 
-Part of the [@vllnt](https://github.com/vllnt) Convex component fleet —
-[vllnt.com](https://vllnt.com)
-
 If this is useful, [sponsor the work](https://github.com/sponsors/bntvllnt).
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+Part of vllnt oss: https://oss.vllnt.com
