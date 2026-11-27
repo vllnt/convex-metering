@@ -366,7 +366,8 @@ export const recordWithLimit = mutation({
 /**
  * Post a signed correction to a **`sum`** meter's rollup — a refund, credit, void,
  * or over-count fix — appending a reversing record (`delta` may be negative) and
- * re-folding. The rollup never goes negative. Idempotent via `idempotencyKey`. Time is server-sourced.
+ * re-folding. The rollup never goes negative.
+ * Idempotent via `idempotencyKey`. Time is server-sourced.
  *
  * @throws `INVALID_QUANTITY` (non-finite delta), `METER_NOT_FOUND`,
  *   `ADJUST_REQUIRES_SUM` (non-`sum` meter), `PERIOD_CLOSED`, `ADJUST_BELOW_ZERO`

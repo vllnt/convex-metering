@@ -86,8 +86,8 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
   silently restate an already-invoiced number.
 
 - **Signed corrections (`adjust`, sum-only):** refunds/credits/voids post a signed `delta` (may be
-  negative) that appends a reversing record and re-folds. The rollup stays equal to the sum of its
-  records and never goes negative (`ADJUST_BELOW_ZERO` otherwise) — so `verify` reconciles.
+  negative) that appends a reversing record and re-folds. The rollup never goes negative
+  (`ADJUST_BELOW_ZERO` otherwise); `verify` reconciles it while the full record history survives.
 
 - **Atomic enforcement (`recordWithLimit`):** checks the projected rollup against a `limit` and records
   in one serializable mutation, closing the read-then-write race a host-side `usage()` → `record()`
