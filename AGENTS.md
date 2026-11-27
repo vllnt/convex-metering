@@ -102,7 +102,8 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 
 - **Records + rollups split:** raw `records` are the append-only audit trail; `rollups` are the O(1)
   per-period aggregate and the billable truth (never pruned). `verify` recomputes the rollup from the
-  surviving records and flags drift (`consistent`, trustworthy only when `recordsRemaining > 0`).
+  surviving records and flags drift (`consistent` compares values only and is complete only with the
+  full record history; `recordsRemaining > 0` alone does not rule out partial pruning).
 
 - **`period` is a host-supplied opaque string:** the component never parses dates — locale/calendar-agnostic.
 

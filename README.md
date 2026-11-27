@@ -65,8 +65,7 @@ pnpm add @vllnt/convex-metering
 ```
 
 Node.js >=18; required peer: `convex@^1.45.0`. React >=18 is optional. The
-default npm channel is stable; use `@vllnt/convex-metering@canary` for the
-current prerelease surface documented here.
+default npm channel is stable; `@vllnt/convex-metering@canary` tracks `main`.
 
 ## For coding agents
 
@@ -111,7 +110,8 @@ your own rate. Use `recordWithLimit` for atomic enforcement, not a
 read-then-record sequence. The wrapper above is illustrative: authenticate the
 caller, authorize the organization and derive trusted request IDs/periods in the
 host. After mounting, run `pnpm convex dev` to generate component references.
-See [`example/convex/example.ts`](example/convex/example.ts).
+See
+[`example/convex/example.ts`](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.ts).
 
 ## Configuration and limits
 
@@ -256,7 +256,8 @@ register(t);
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See
+[CONTRIBUTING.md](https://github.com/vllnt/convex-metering/blob/main/CONTRIBUTING.md).
 
 ## Author
 

@@ -25,8 +25,9 @@ const metering = new Metering(components.metering, {
 });
 ```
 
-All methods take the host `ctx` (a query or mutation context) as the first
-argument.
+All methods take the host `ctx` as the first argument: mutation methods need a
+mutation or action `ctx` (`runMutation`); query methods take any `ctx` with
+`runQuery`.
 
 **Periods are host-owned.** A `period` is an opaque string you choose
 (`"2026-06"`, `"2026-W24"`). The component never parses dates, so the calendar
@@ -50,6 +51,8 @@ accepts a caller one.
 Create or update a meter. `unit` may change freely. `aggregation` is **locked
 once any usage exists** (`AGGREGATION_LOCKED`) — switching it would leave the
 rollup computed under two rules; define a new meter key instead.
+
+**Throws** `INVALID_ARGUMENT` (an empty `scope` or `key`), `AGGREGATION_LOCKED`.
 
 ### `record(ctx, meter, subjectRef, quantity, opts?) → RecordOutcome`
 
@@ -100,9 +103,9 @@ would make the rollup negative).
 
 ### `closePeriod(ctx, meter, subjectRef, opts?) → boolean`
 
-`opts`: `{ period?; scope? }`. Freeze a `(meter, subject, period)` so its billed
-value is immutable — later `record`/`adjust`/`recordWithLimit` into it throw
-`PERIOD_CLOSED`. Returns `false` if no usage exists for it. `usage()` then
+`opts`: `{ period?; scope? }`. Freeze a `(meter, subject, period)` so later
+`record`/`adjust`/`recordWithLimit` into it throw `PERIOD_CLOSED`. `reset` and
+`eraseSubject` do not check the freeze: they still delete a closed period. Returns `false` if no usage exists for it. `usage()` then
 reports `closed: true`. Closing an already-closed period is a no-op that returns
 `true` and keeps the original freeze time.
 
@@ -112,14 +115,16 @@ reports `closed: true`. Closing an already-closed period is a no-op that returns
 usage for one `(meter, period)` — deletes the rollup and raw records in bounded,
 self-rescheduling batches; returns the records removed this pass (0 once
 drained). A pass that empties the period also deletes the rollup, so another
-pass is scheduled only when the batch was full. Idempotency keys in `seen` are kept, so a late replay stays deduped
+pass is scheduled only when the batch was full. A closed period is deleted
+too. Idempotency keys in `seen` are kept, so a late replay stays deduped
 rather than re-counting.
 
 ### `eraseSubject(ctx, subjectRef, opts?) → number`
 
 `opts`: `{ scope?; batch? }`. Erase a subject across **every meter and period**
 (records + rollups), bounded + self-rescheduling; returns the records and
-rollups removed this pass. The GDPR right-to-erasure primitive. `seen` (idempotency keys, no subject PII) is left intact.
+rollups removed this pass, including closed periods. The GDPR right-to-erasure
+primitive. `seen` (idempotency keys, no subject PII) is left intact.
 
 ### `pruneRecords(ctx, before, batch?) → number` · `pruneSeen(ctx, before, batch?) → number`
 
@@ -161,7 +166,12 @@ reconciliation requires the full relevant record history: `recordsRemaining > 0`
 alone does not rule out partial pruning. The query collects all matching records
 and remains subject to Convex read limits.
 
+**Throws** `METER_NOT_FOUND`.
+
 ## Error codes
+
+Errors are thrown as `ConvexError` with `data: { code, message }`; branch on
+`error instanceof ConvexError && error.data.code === "PERIOD_CLOSED"`.
 
 | Code                        | Thrown by                                          | When                                                   |
 | --------------------------- | -------------------------------------------------- | ------------------------------------------------------ |

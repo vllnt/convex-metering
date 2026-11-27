@@ -3,8 +3,8 @@ name: Publish
 # Canary: a push to main touching the package or its shipped docs, or a manual run on
 # main; it publishes under the `canary` dist-tag only and never moves `latest`.
 # Stable (@latest): only a pushed vX.Y.Z tag whose commit is on main and matches
-# package.json and a CHANGELOG.md entry. Both use npm trusted
-# publishing (OIDC) with provenance; this workflow holds no npm token.
+# package.json and a CHANGELOG.md entry. Both use npm trusted publishing (OIDC)
+# with provenance; this workflow holds no npm token.
 
 on:
   push:
@@ -19,7 +19,7 @@ on:
       - "README.md"
       - "CHANGELOG.md"
       - "llms.txt"
-      - "docs/API.md"
+      - "docs/*.md"
   workflow_dispatch:
 
 concurrency:

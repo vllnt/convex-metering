@@ -254,8 +254,8 @@ export class Metering {
 
   /**
    * Post a signed correction to a **sum** meter (`delta` may be negative — a
-   * refund/credit/void). The rollup stays equal to the sum of records and never
-   * goes negative (`ADJUST_BELOW_ZERO` otherwise). Idempotent via `idempotencyKey`.
+   * refund/credit/void). Appends a reversing record; the rollup never goes
+   * negative (`ADJUST_BELOW_ZERO` otherwise). Idempotent via `idempotencyKey`.
    */
   adjust(
     ctx: RunMutationCtx,
@@ -424,7 +424,8 @@ export class Metering {
 
   /**
    * Reconcile a `(meter, subject, period)` rollup against its surviving records.
-   * `consistent` is trustworthy only when `recordsRemaining > 0`.
+   * `consistent` compares values only; it is complete only when the full record
+   * history survives (`recordsRemaining > 0` alone does not rule out pruning).
    */
   verify(
     ctx: RunQueryCtx,

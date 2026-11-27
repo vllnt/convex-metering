@@ -8,7 +8,7 @@
   "files": [
     "dist",
     "src",
-    "docs/API.md",
+    "docs/*.md",
     "CHANGELOG.md",
     "llms.txt",
     "!src/**/*.test.*",
