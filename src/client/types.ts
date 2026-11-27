@@ -93,7 +93,7 @@ export interface VerifyResult {
   rollupValue: number;
   rollupCount: number;
   recomputedValue: number;
-  /** Records still present (recomputation is only authoritative when > 0). */
+  /** Records still present; a positive count does not rule out partial pruning. */
   recordsRemaining: number;
   /** `rollupValue === recomputedValue`. */
   consistent: boolean;

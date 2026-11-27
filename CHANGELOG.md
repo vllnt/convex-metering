@@ -29,6 +29,15 @@ All notable changes to this project are documented here. The format is based on
   and the full error-code table.
 - Releases run only from CI: canary from `main`, `@latest` from a `vX.Y.Z` tag, with npm trusted
   publishing and provenance. pnpm 10 with a release-age gate; deepmerge-ts override pinned to 8.0.2.
+- The npm package now ships `docs/API.md`, `CHANGELOG.md` and `llms.txt`, so the docs under
+  `node_modules/@vllnt/convex-metering/` match the installed version. `llms.txt` links shipped files
+  relatively; `docs/API.md` documents every entry point, the React hooks and the `/test` helper, and
+  lists `key` and `actorRef` under `INVALID_ARGUMENT`; `reset` and `eraseSubject` are documented to
+  delete closed periods, and the `verify`/`adjust` code comments no longer overstate what a positive
+  `recordsRemaining` proves. `pnpm lint` fails when a required file is missing from the tarball or a
+  shipped doc links outside it. `homepage` points to https://oss.vllnt.com/packages/convex-metering.
+- Every push to `main` that changes the package or its shipped docs publishes a `canary`; a
+  repository variable no longer gates it. Canaries never move `latest`.
 
 ## [0.1.0] - 2026-09-01
 

@@ -86,8 +86,8 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
   silently restate an already-invoiced number.
 
 - **Signed corrections (`adjust`, sum-only):** refunds/credits/voids post a signed `delta` (may be
-  negative) that appends a reversing record and re-folds. The rollup stays equal to the sum of its
-  records and never goes negative (`ADJUST_BELOW_ZERO` otherwise) — so `verify` reconciles.
+  negative) that appends a reversing record and re-folds. The rollup never goes negative
+  (`ADJUST_BELOW_ZERO` otherwise); `verify` reconciles it while the full record history survives.
 
 - **Atomic enforcement (`recordWithLimit`):** checks the projected rollup against a `limit` and records
   in one serializable mutation, closing the read-then-write race a host-side `usage()` → `record()`
@@ -102,7 +102,8 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 
 - **Records + rollups split:** raw `records` are the append-only audit trail; `rollups` are the O(1)
   per-period aggregate and the billable truth (never pruned). `verify` recomputes the rollup from the
-  surviving records and flags drift (`consistent`, trustworthy only when `recordsRemaining > 0`).
+  surviving records and flags drift (`consistent` compares values only and is complete only with the
+  full record history; `recordsRemaining > 0` alone does not rule out partial pruning).
 
 - **`period` is a host-supplied opaque string:** the component never parses dates — locale/calendar-agnostic.
 
@@ -146,6 +147,7 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
 | Aggregation / idempotency / period / adjust / rollup semantics | `docs/API.md`, Key design decisions above |
 | Any change | `pnpm generate:llms` to validate the `llms.txt` index |
+| Shipped docs (`README.md`, `CHANGELOG.md`, `llms.txt`, `docs/*.md`) | keep them in `package.json` `files` and in the `publish.yml` paths; `llms.txt` links shipped files as `./path` (`pnpm check:package`) |
 
 Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).
 

@@ -83,8 +83,9 @@ export const subjectUsageEntry = v.object({
 
 /**
  * Result of `verify` — reconciliation of the materialized rollup against the
- * surviving raw records. `consistent` is `rollupValue === recomputedValue`; trust
- * it only when `recordsRemaining > 0` (pruned history can't be fully recomputed).
+ * surviving raw records. `consistent` is `rollupValue === recomputedValue`; it is
+ * complete only when the full record history survives (`recordsRemaining > 0`
+ * alone does not rule out partial pruning).
  */
 export const verifyResult = v.object({
   rollupValue: v.number(),

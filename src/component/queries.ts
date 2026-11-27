@@ -130,8 +130,9 @@ export const listSubjectUsage = query({
  * Reconcile the materialized rollup against the surviving raw records for a
  * `(meter, subject, period)`: recomputes the value by re-folding the records under
  * the meter's aggregation and compares. `consistent` is `rollupValue ===
- * recomputedValue`; trust it only when `recordsRemaining > 0` (pruned history
- * cannot be fully recomputed). The reconciliation guardrail for billing audits.
+ * recomputedValue`; it is complete only when the full record history survives
+ * (`recordsRemaining > 0` alone does not rule out partial pruning). The
+ * reconciliation guardrail for billing audits.
  *
  * @throws `ConvexError({ code: "METER_NOT_FOUND" })`.
  */
