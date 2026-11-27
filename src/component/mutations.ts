@@ -366,8 +366,7 @@ export const recordWithLimit = mutation({
 /**
  * Post a signed correction to a **`sum`** meter's rollup — a refund, credit, void,
  * or over-count fix — appending a reversing record (`delta` may be negative) and
- * re-folding. The rollup stays equal to the sum of its records and never goes
- * negative. Idempotent via `idempotencyKey`. Time is server-sourced.
+ * re-folding. The rollup never goes negative. Idempotent via `idempotencyKey`. Time is server-sourced.
  *
  * @throws `INVALID_QUANTITY` (non-finite delta), `METER_NOT_FOUND`,
  *   `ADJUST_REQUIRES_SUM` (non-`sum` meter), `PERIOD_CLOSED`, `ADJUST_BELOW_ZERO`
@@ -445,9 +444,10 @@ export const adjust = mutation({
 });
 
 /**
- * Freeze a `(meter, subject, period)` — its billed value becomes immutable, so a
- * late event can't silently restate the invoiced number (`record`/`adjust` into it
- * throw `PERIOD_CLOSED`). Returns `false` when no rollup exists, `true` once frozen.
+ * Freeze a `(meter, subject, period)` so a late event can't silently restate the
+ * invoiced number (`record`/`adjust`/`recordWithLimit` into it throw
+ * `PERIOD_CLOSED`); `reset`/`eraseSubject` still delete it. Returns `false` when
+ * no rollup exists, `true` once frozen.
  */
 export const closePeriod = mutation({
   args: {

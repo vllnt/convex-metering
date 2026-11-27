@@ -48,7 +48,7 @@ for (const path of packed)
   if (FORBIDDEN.some((re) => re.test(path)))
     errors.push(`must not ship: ${path}`);
 
-for (const file of ["llms.txt", "README.md", ...DOCS].filter((f) => packed.has(f))) {
+for (const file of ["llms.txt", "README.md", "CHANGELOG.md", ...DOCS].filter((f) => packed.has(f))) {
   const text = readFileSync(file, "utf8");
   for (const [, target] of text.matchAll(/\]\(([^)\s]+)\)/g)) {
     const path = target.split("#")[0];

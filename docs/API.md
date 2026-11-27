@@ -105,8 +105,9 @@ would make the rollup negative).
 
 `opts`: `{ period?; scope? }`. Freeze a `(meter, subject, period)` so later
 `record`/`adjust`/`recordWithLimit` into it throw `PERIOD_CLOSED`. `reset` and
-`eraseSubject` do not check the freeze: they still delete a closed period. Returns `false` if no usage exists for it. `usage()` then
-reports `closed: true`. Closing an already-closed period is a no-op that returns
+`eraseSubject` do not check the freeze: they still delete a closed period.
+Returns `false` if no usage exists for it. `usage()` then reports
+`closed: true`. Closing an already-closed period is a no-op that returns
 `true` and keeps the original freeze time.
 
 ### `reset(ctx, meter, subjectRef, opts?) → number`

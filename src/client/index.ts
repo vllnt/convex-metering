@@ -276,9 +276,9 @@ export class Metering {
   }
 
   /**
-   * Freeze a `(meter, subject, period)` so its billed value is immutable
-   * (`record`/`adjust` into it throw `PERIOD_CLOSED`). Returns `false` if no usage
-   * exists for it.
+   * Freeze a `(meter, subject, period)`: `record`/`adjust`/`recordWithLimit` into
+   * it throw `PERIOD_CLOSED`; `reset`/`eraseSubject` still delete it. Returns
+   * `false` if no usage exists for it.
    */
   closePeriod(
     ctx: RunMutationCtx,
