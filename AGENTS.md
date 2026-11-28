@@ -154,6 +154,10 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 - Runtime deps: only official `@convex-dev/*` + `@vllnt/*`.
 - The pnpm release-age gate (`minimumReleaseAge`, `minimumReleaseAgeExclude`) lives in
   `pnpm-workspace.yaml`: pnpm 10 ignores it under `package.json` `pnpm`.
+- Dependency updates are a manual pass under that 7-day gate; there is no update bot.
+- CI and publish get pnpm through Corepack (`corepack enable`), pinned by `package.json`
+  `packageManager`; every action in `ci.yml` and `publish.yml` is GitHub's own and pinned to a
+  commit SHA.
 - `pnpm test` and `pnpm test:coverage` run `pnpm typecheck:tests` (`tsconfig.test.json`, every test
   file in `src/` and `example/`) first.
 
@@ -175,7 +179,7 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README `## Compatibility` |
 | Aggregation / idempotency / period / adjust / rollup semantics | `docs/API.md`, Key design decisions above |
 | Any change | `pnpm generate:llms`, then `pnpm build && pnpm check:docs` |
-| Shipped docs (`README.md`, `CHANGELOG.md`, `llms.txt`, `docs/*.md`) | keep them in `package.json` `files` and in the `publish.yml` paths; `llms.txt` links shipped files as `./path` (`pnpm check:package`) |
+| Shipped docs (`README.md`, `CHANGELOG.md`, `llms.txt`, `docs/*.md`) | keep them in `package.json` `files`; `llms.txt` links shipped files as `./path` (`pnpm check:package`) |
 
 Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).
 

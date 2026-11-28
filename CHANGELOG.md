@@ -56,8 +56,8 @@ All notable changes to this project are documented here. The format is based on
   delete closed periods, and the `verify`/`adjust` code comments no longer overstate what a positive
   `recordsRemaining` proves. `pnpm lint` fails when a required file is missing from the tarball or a
   shipped doc links outside it. `homepage` points to https://oss.vllnt.com/packages/convex-metering.
-- Every push to `main` that changes the package or its shipped docs publishes a `canary`; a
-  repository variable no longer gates it. Canaries never move `latest`.
+- Every push to `main` publishes a `canary`; a repository variable no longer gates it. Canaries
+  never move `latest`.
 - Develop and test against `convex` 1.51 and `convex-test` 0.0.73, and move the development
   toolchain to ESLint 10, jsdom 31, `@vllnt/typescript` 3 and Vitest 5.1.1 (dev-only); pin the
   `minimatch` (11.0.9) and `handlebars` (4.7.10) dev overrides. The `convex` peer range (`^1.45.0`)
@@ -73,7 +73,13 @@ All notable changes to this project are documented here. The format is based on
   file in `src/` and `example/` (`tsconfig.test.json` fixed).
 - The tarball check also rejects `*.spec.mts` and `*.spec.cts` files, and its harness runs in CI.
 - The pnpm release-age gate (7 days, `@vllnt/*` excluded) moved to `pnpm-workspace.yaml`, where pnpm
-  10 enforces it; under `package.json` `pnpm` it was ignored. Renovate waits 7 days too.
+  10 enforces it; under `package.json` `pnpm` it was ignored.
+- Internal: CI and publish set up pnpm through Corepack (`packageManager`), and the package test
+  pins its consumer to the same pnpm; every action in `ci.yml` and `publish.yml` is GitHub's own and
+  pinned to a commit, and the privacy guard's `checkout` and `setup-node` are pinned too; every push
+  to `main` publishes a canary; CI on `main` is never cancelled; there is no update bot, dependency
+  updates are a manual pass under the 7-day rule; a test pins the `recordWithLimit` boundary (a
+  rollup that lands exactly on the limit records).
 
 ## [0.1.0] - 2026-09-01
 

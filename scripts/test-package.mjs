@@ -1,6 +1,7 @@
 // Package test, run by `pnpm test:package` after `pnpm build`. Packs the package,
-// installs the tarball into one throwaway consumer project (same release-age gate
-// and overrides as this repo, same dependency versions it develops against), then
+// installs the tarball into one throwaway consumer project (same pnpm version,
+// release-age gate and overrides as this repo, same dependency versions it
+// develops against), then
 // checks what a real consumer sees:
 //   (a) every runtime entry point imports in Node,
 //   (b) a strict nodenext consumer of every entry point type-checks with
@@ -22,7 +23,9 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 
 const root = process.cwd();
-const { name, pnpm } = JSON.parse(readFileSync("package.json", "utf8"));
+const { name, packageManager, pnpm } = JSON.parse(
+  readFileSync("package.json", "utf8"),
+);
 
 /** Installed dev version of a package, as an install spec for the consumer. */
 const devSpec = (dependency) => {
@@ -55,6 +58,8 @@ try {
     JSON.stringify({
       private: true,
       type: "module",
+      // Same pnpm as this repo: without it Corepack picks its own default pnpm.
+      packageManager,
       // Same overrides as this repo; pnpm reads them from package.json.
       pnpm: {
         ignoredBuiltDependencies: pnpm.ignoredBuiltDependencies,
