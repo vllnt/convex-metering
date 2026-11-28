@@ -42,7 +42,9 @@ at least one adversarial test (invalid input, not-found, boundary).
 - Target `main`
 - One logical change per PR
 - Include tests for new behavior or bug fixes
-- Ensure all checks pass: `pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm build && pnpm check:docs`
+- Ensure all checks pass: `pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm build && pnpm test:package && pnpm check:docs`
+  (`pnpm test:coverage` type-checks every test file first via `pnpm typecheck:tests`; CI also runs
+  `bash scripts/test-check-package-contents.sh`)
 
 ## Releases
 
