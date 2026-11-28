@@ -1,7 +1,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, components } from "./_generated/api";
 import schema from "./schema";
+import { Metering } from "../../src/client";
 import { register } from "../../src/test";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -56,17 +57,17 @@ describe("metering — record validation + gauge guard", () => {
     await t.mutation(api.example.defineMeter, { key: "m" });
     await expect(
       t.mutation(api.example.record, { meter: "m", subjectRef: "s", quantity: -1 }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/INVALID_QUANTITY/);
     await expect(
       t.mutation(api.example.record, { meter: "m", subjectRef: "s", quantity: Infinity }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/INVALID_QUANTITY/);
   });
 
   test("recording against an undefined meter is rejected", async () => {
     const t = setup();
     await expect(
       t.mutation(api.example.record, { meter: "ghost", subjectRef: "s", quantity: 1 }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/METER_NOT_FOUND/);
   });
 
   test("an idempotencyKey on a non-sum gauge meter is rejected", async () => {
@@ -270,11 +271,11 @@ describe("metering — adjust (signed corrections, sum-only)", () => {
     const t = setup();
     await expect(
       t.mutation(api.example.adjust, { meter: "ghost", subjectRef: "o", delta: 1, period: "p" }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/METER_NOT_FOUND/);
     await t.mutation(api.example.defineMeter, { key: "api", aggregation: "sum" });
     await expect(
       t.mutation(api.example.adjust, { meter: "api", subjectRef: "o", delta: Infinity, period: "p" }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/INVALID_QUANTITY/);
     await t.mutation(api.example.defineMeter, { key: "gauge", aggregation: "max" });
     await expect(
       t.mutation(api.example.adjust, { meter: "gauge", subjectRef: "o", delta: 1, period: "p" }),
@@ -411,7 +412,7 @@ describe("metering — recordWithLimit (atomic enforcement)", () => {
         limit: 10,
         period: "p",
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/METER_NOT_FOUND/);
     await t.mutation(api.example.defineMeter, { key: "api", aggregation: "sum" });
     await expect(
       t.mutation(api.example.recordWithLimit, {
@@ -421,7 +422,7 @@ describe("metering — recordWithLimit (atomic enforcement)", () => {
         limit: 10,
         period: "p",
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/INVALID_QUANTITY/);
     for (const limit of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
       await expect(
         t.mutation(api.example.recordWithLimit, {
@@ -443,7 +444,7 @@ describe("metering — recordWithLimit (atomic enforcement)", () => {
         period: "p",
         idempotencyKey: "k",
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/IDEMPOTENCY_NOT_SUPPORTED/);
   });
 
   test("recordWithLimit refuses recording into a closed period", async () => {
@@ -508,7 +509,7 @@ describe("metering — usage / listUsage / listMeters / verify reads", () => {
     expect(pruned).toMatchObject({ rollupValue: 5, recordsRemaining: 0, consistent: false });
     await expect(
       t.query(api.example.verify, { meter: "ghost", subjectRef: "o", period: "p" }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/METER_NOT_FOUND/);
   });
 });
 
@@ -833,5 +834,221 @@ describe("metering — counter correctness hardening", () => {
       { period: "2026-06", value: 5, count: 1, closed: true },
       { period: "2026-07", value: 7, count: 1, closed: false },
     ]);
+  });
+});
+
+describe("metering — documented limits and orderings", () => {
+  test("idempotency keys are scoped to (scope, meter): another subject or period dedups, another meter or scope records", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api" });
+    await t.mutation(api.example.defineMeter, { key: "gb" });
+    await t.mutation(api.example.defineMeter, { key: "api", scope: "t2" });
+    const keyed = { meter: "api", subjectRef: "o", quantity: 1, period: "p", idempotencyKey: "k" };
+    expect(await t.mutation(api.example.record, keyed)).toMatchObject({ recorded: true });
+    expect(await t.mutation(api.example.record, { ...keyed, subjectRef: "o2" })).toEqual({
+      recorded: false,
+      reason: "duplicate",
+    });
+    expect(await t.mutation(api.example.record, { ...keyed, period: "p2" })).toEqual({
+      recorded: false,
+      reason: "duplicate",
+    });
+    expect(await t.mutation(api.example.record, { ...keyed, meter: "gb" })).toMatchObject({
+      recorded: true,
+    });
+    expect(await t.mutation(api.example.record, { ...keyed, scope: "t2" })).toMatchObject({
+      recorded: true,
+    });
+  });
+
+  test("keys survive reset and eraseSubject, so a replay stays a duplicate", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api" });
+    const keyed = { meter: "api", subjectRef: "o", quantity: 1, period: "p", idempotencyKey: "k" };
+    await t.mutation(api.example.record, keyed);
+    await t.mutation(api.example.reset, { meter: "api", subjectRef: "o", period: "p" });
+    expect(await t.mutation(api.example.record, keyed)).toEqual({ recorded: false, reason: "duplicate" });
+    await t.mutation(api.example.record, { ...keyed, idempotencyKey: "k2" });
+    await t.mutation(api.example.eraseSubject, { subjectRef: "o" });
+    expect(await t.mutation(api.example.record, { ...keyed, idempotencyKey: "k2" })).toEqual({
+      recorded: false,
+      reason: "duplicate",
+    });
+    expect(await t.query(api.example.usage, { meter: "api", subjectRef: "o", period: "p" })).toBeNull();
+  });
+
+  test("PERIOD_CLOSED is checked before the duplicate check", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api" });
+    const keyed = { meter: "api", subjectRef: "o", quantity: 1, period: "p", idempotencyKey: "k" };
+    await t.mutation(api.example.record, keyed);
+    await t.mutation(api.example.closePeriod, { meter: "api", subjectRef: "o", period: "p" });
+    await expect(t.mutation(api.example.record, keyed)).rejects.toThrow(/PERIOD_CLOSED/);
+    await expect(t.mutation(api.example.recordWithLimit, { ...keyed, limit: 100 })).rejects.toThrow(
+      /PERIOD_CLOSED/,
+    );
+    await expect(
+      t.mutation(api.example.adjust, { meter: "api", subjectRef: "o", delta: 1, period: "p", idempotencyKey: "k" }),
+    ).rejects.toThrow(/PERIOD_CLOSED/);
+  });
+
+  test("limit_exceeded stores no key, so a retry under a higher limit records", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api" });
+    const keyed = { meter: "api", subjectRef: "o", quantity: 5, period: "p", idempotencyKey: "k" };
+    expect(await t.mutation(api.example.recordWithLimit, { ...keyed, limit: 4 })).toEqual({
+      recorded: false,
+      reason: "limit_exceeded",
+      value: 0,
+      limit: 4,
+    });
+    expect(await t.mutation(api.example.recordWithLimit, { ...keyed, limit: 10 })).toEqual({
+      recorded: true,
+      value: 5,
+      count: 1,
+    });
+  });
+
+  test("recordWithLimit projects the new peak for max and the new value for last", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "peak", aggregation: "max" });
+    await t.mutation(api.example.defineMeter, { key: "gauge", aggregation: "last" });
+    const peak = { meter: "peak", subjectRef: "o", period: "p", limit: 10 };
+    await t.mutation(api.example.recordWithLimit, { ...peak, quantity: 8 });
+    // max(8, 5) = 8 <= 10 → recorded, the peak stays 8
+    expect(await t.mutation(api.example.recordWithLimit, { ...peak, quantity: 5 })).toEqual({
+      recorded: true,
+      value: 8,
+      count: 2,
+    });
+    // max(8, 12) = 12 > 10 → refused
+    expect(await t.mutation(api.example.recordWithLimit, { ...peak, quantity: 12 })).toEqual({
+      recorded: false,
+      reason: "limit_exceeded",
+      value: 8,
+      limit: 10,
+    });
+    const gauge = { meter: "gauge", subjectRef: "o", period: "p", limit: 5 };
+    await t.mutation(api.example.record, { meter: "gauge", subjectRef: "o", period: "p", quantity: 8 });
+    // last: the projection is the new value 3, not 8 or 8 + 3
+    expect(await t.mutation(api.example.recordWithLimit, { ...gauge, quantity: 3 })).toEqual({
+      recorded: true,
+      value: 3,
+      count: 2,
+    });
+    expect(await t.mutation(api.example.recordWithLimit, { ...gauge, quantity: 6 })).toEqual({
+      recorded: false,
+      reason: "limit_exceeded",
+      value: 3,
+      limit: 5,
+    });
+  });
+
+  test("reset and eraseSubject delete closed periods", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api" });
+    for (const subjectRef of ["a", "b"]) {
+      await t.mutation(api.example.record, { meter: "api", subjectRef, quantity: 1, period: "p" });
+      await t.mutation(api.example.closePeriod, { meter: "api", subjectRef, period: "p" });
+    }
+    expect(await t.mutation(api.example.reset, { meter: "api", subjectRef: "a", period: "p" })).toBe(1);
+    expect(await t.query(api.example.usage, { meter: "api", subjectRef: "a", period: "p" })).toBeNull();
+    expect(await t.mutation(api.example.eraseSubject, { subjectRef: "b" })).toBe(2);
+    expect(await t.query(api.example.listSubjectUsage, { subjectRef: "b" })).toEqual([]);
+  });
+
+  test("eraseSubject stays in its scope; pruneRecords and pruneSeen span every scope", async () => {
+    const t = setup();
+    for (const scope of ["a", "b"]) {
+      await t.mutation(api.example.defineMeter, { key: "api", scope });
+      await t.mutation(api.example.record, {
+        meter: "api",
+        subjectRef: "o",
+        quantity: 1,
+        period: "p",
+        scope,
+        idempotencyKey: "k",
+      });
+    }
+    expect(await t.mutation(api.example.eraseSubject, { subjectRef: "o", scope: "a" })).toBe(2);
+    expect(await t.query(api.example.listSubjectUsage, { subjectRef: "o", scope: "a" })).toEqual([]);
+    expect(await t.query(api.example.listSubjectUsage, { subjectRef: "o", scope: "b" })).toHaveLength(1);
+
+    await t.mutation(api.example.record, { meter: "api", subjectRef: "o", quantity: 1, period: "p", scope: "a" });
+    vi.setSystemTime(1_000);
+    expect(await t.mutation(api.example.pruneRecords, { before: 1_000 })).toBe(2);
+    for (const scope of ["a", "b"]) {
+      expect(
+        (await t.query(api.example.verify, { meter: "api", subjectRef: "o", period: "p", scope }))
+          .recordsRemaining,
+      ).toBe(0);
+    }
+    expect(await t.mutation(api.example.pruneSeen, { before: 1_000 })).toBe(2);
+    for (const scope of ["a", "b"]) {
+      expect(
+        await t.mutation(api.example.record, {
+          meter: "api",
+          subjectRef: "o",
+          quantity: 1,
+          period: "p",
+          scope,
+          idempotencyKey: "k",
+        }),
+      ).toMatchObject({ recorded: true });
+    }
+  });
+
+  test("listUsage sorts by period string; unknown meters read as null or []", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api" });
+    for (const period of ["2026-07", "2026-05", "2026-06"]) {
+      await t.mutation(api.example.record, { meter: "api", subjectRef: "o", quantity: 1, period });
+    }
+    expect(
+      (await t.query(api.example.listUsage, { meter: "api", subjectRef: "o" })).map((e) => e.period),
+    ).toEqual(["2026-05", "2026-06", "2026-07"]);
+    expect(await t.query(api.example.listUsage, { meter: "ghost", subjectRef: "o" })).toEqual([]);
+    expect(await t.query(api.example.usage, { meter: "ghost", subjectRef: "o", period: "p" })).toBeNull();
+    expect(await t.query(api.example.getMeter, { key: "ghost" })).toBeNull();
+  });
+
+  test("listSubjectUsage returns rollups in creation order, and listMeters meters in definition order", async () => {
+    const t = setup();
+    for (const key of ["gb", "api"]) {
+      await t.mutation(api.example.defineMeter, { key });
+    }
+    // re-defining keeps a meter's place
+    await t.mutation(api.example.defineMeter, { key: "gb", unit: "GB" });
+    expect((await t.query(api.example.listMeters, {})).map((m) => m.key)).toEqual(["gb", "api"]);
+
+    const lines = async () =>
+      (await t.query(api.example.listSubjectUsage, { subjectRef: "o" })).map((e) => `${e.meter}/${e.period}`);
+    await t.mutation(api.example.record, { meter: "gb", subjectRef: "o", quantity: 1, period: "2026-07" });
+    await t.mutation(api.example.record, { meter: "api", subjectRef: "o", quantity: 1, period: "2026-06" });
+    await t.mutation(api.example.record, { meter: "api", subjectRef: "o", quantity: 1, period: "2026-05" });
+    // a later write to an existing rollup keeps its place
+    await t.mutation(api.example.record, { meter: "gb", subjectRef: "o", quantity: 1, period: "2026-07" });
+    expect(await lines()).toEqual(["gb/2026-07", "api/2026-06", "api/2026-05"]);
+    // a period cleared by reset and recorded again is a new rollup, so it moves to the end
+    await t.mutation(api.example.reset, { meter: "gb", subjectRef: "o", period: "2026-07" });
+    await t.mutation(api.example.record, { meter: "gb", subjectRef: "o", quantity: 1, period: "2026-07" });
+    expect(await lines()).toEqual(["api/2026-06", "api/2026-05", "gb/2026-07"]);
+  });
+
+  test("an empty defaultScope or defaultPeriod makes writes throw INVALID_ARGUMENT", async () => {
+    const t = setup();
+    const noScope = new Metering(components.metering, { defaultScope: "" });
+    const noPeriod = new Metering(components.metering, { defaultPeriod: "" });
+    const longPeriod = new Metering(components.metering, { defaultPeriod: "x".repeat(257) });
+    await expect(t.run((ctx) => noScope.defineMeter(ctx, "api"))).rejects.toThrow(
+      /INVALID_ARGUMENT.*scope must not be an empty string/,
+    );
+    await t.run((ctx) => noPeriod.defineMeter(ctx, "api"));
+    await expect(t.run((ctx) => noPeriod.record(ctx, "api", "o", 1))).rejects.toThrow(
+      /INVALID_ARGUMENT.*period must not be an empty string/,
+    );
+    await expect(t.run((ctx) => longPeriod.record(ctx, "api", "o", 1))).rejects.toThrow(
+      /INVALID_ARGUMENT.*period must be at most 256 characters/,
+    );
   });
 });
