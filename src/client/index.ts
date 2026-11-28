@@ -165,11 +165,21 @@ interface RunMutationCtx {
  * });
  * if (!r.recorded && r.reason === "limit_exceeded") throw new Error("over plan limit");
  * ```
+ *
+ * @see https://oss.vllnt.com/packages/convex-metering
  */
 export class Metering {
   private readonly defaultScope: string;
   private readonly defaultPeriod: string;
 
+  /**
+   * Create a client for one mount of the component.
+   *
+   * @param component - The mount's function references: `components.metering`, or
+   *   `components.<name>` for `app.use(metering, { name })`.
+   * @param options - `defaultScope` (default `"global"`) and `defaultPeriod` (default
+   *   `"all"`), used when a call omits `scope` or `period`.
+   */
   constructor(
     private readonly component: MeteringComponent,
     options: MeteringOptions = {},
@@ -187,7 +197,8 @@ export class Metering {
   }
 
   /**
-   * Create or update a meter. `aggregation` defaults to `"sum"`, `unit` to `""`.
+   * Create or update a meter. `aggregation` defaults to `"sum"`, `unit` to `""`; an
+   * update writes both, so omitting them on a re-define sends the defaults.
    * `unit` may change freely; `aggregation` is locked once usage exists (throws
    * `AGGREGATION_LOCKED`). Returns `{ created }`.
    */

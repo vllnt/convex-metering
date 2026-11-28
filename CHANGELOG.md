@@ -8,15 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- `closePeriod` on an already-closed period is a no-op that keeps the original freeze time instead
-  of rewriting it.
-- Reject a `sum` rollup that would overflow to `Infinity` (`QUANTITY_OVERFLOW`) in `record` and
-  `adjust`; previously the rollup silently became `Infinity` and could not be corrected.
 - **Breaking:** Reject empty-string identifiers (`scope` and `key` on `defineMeter`; `scope`, `meter`,
   `subjectRef`, `period`, `idempotencyKey` and `actorRef` on `record`, `recordWithLimit` and `adjust`)
   with `ConvexError({ code: "INVALID_ARGUMENT" })` instead of silently bucketing usage under an empty
   key. Callers passing an empty string, which 0.1.0 accepted, now get a `ConvexError` instead of
   success.
+- `closePeriod` on an already-closed period is a no-op that keeps the original freeze time instead
+  of rewriting it.
+- Reject a `sum` rollup that would overflow to `Infinity` (`QUANTITY_OVERFLOW`) in `record` and
+  `adjust`; previously the rollup silently became `Infinity` and could not be corrected.
 - `useUsage` clamps `fraction` to its documented `0..1` range when usage is over the limit.
 - `@vllnt/convex-metering/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
   relative imports, Vite client types referenced).
@@ -28,6 +28,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Rewrite the README for coding agents (fixed section order, a Quick start in the first 40 lines,
+  an export table, an errors table with every thrown code and message, a limits list), rewrite
+  `docs/API.md` with one heading per export, refresh `llms.txt`, and add TSDoc to every public
+  export. The README test example now uses `import.meta.glob("./**/*.*s")`, so the module map
+  includes the `.js` files Convex codegen writes, and examples use `.js`-suffixed relative imports
+  so they compile under `moduleResolution: nodenext`. `pnpm check:docs` (`scripts/check-docs.mjs`, run
+  in CI after `pnpm build`) enforces these docs and type-checks their examples against `dist/`. The
+  `description` and `keywords` now describe usage metering, limits, period close and corrections.
+  `pnpm typecheck:ci` also type-checks the React hook tests.
 - Fewer billed calls and writes: `reset` and `eraseSubject` schedule a follow-up pass only when a
   batch was full; `defineMeter` skips the write when nothing changed; `recordWithLimit` reads the
   idempotency ledger once.

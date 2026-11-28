@@ -1,84 +1,39 @@
-<!-- Badges -->
-
-[![convex-component](https://img.shields.io/badge/convex-component-EE342F.svg)](https://www.convex.dev/components)
-[![npm](https://img.shields.io/npm/v/@vllnt/convex-metering.svg)](https://www.npmjs.com/package/@vllnt/convex-metering)
-[![CI](https://github.com/vllnt/convex-metering/actions/workflows/ci.yml/badge.svg)](https://github.com/vllnt/convex-metering/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/@vllnt/convex-metering.svg)](./LICENSE)
-
 # @vllnt/convex-metering
 
-Metered usage records — idempotent usage events rolled up per billing period, as
-a Convex component.
+Usage metering as a Convex component: idempotent usage events rolled up per billing period, with atomic limits, period close and signed corrections.
 
-```ts
-const metering = new Metering(components.metering);
-await metering.defineMeter(ctx, "api_calls", {
-  aggregation: "sum",
-  unit: "requests",
-});
-await metering.record(ctx, "api_calls", orgId, 1, {
-  period: "2026-06",
-  idempotencyKey: requestId, // a retry won't double-count
-});
-const used = await metering.usage(ctx, "api_calls", orgId, {
-  period: "2026-06",
-});
-```
+## For coding agents
 
-Define a meter, record usage for an opaque subject into host-chosen period
-buckets, and read O(1) per-period rollups for billing or limit checks. Sum
-recording with a retained idempotency key avoids double-counting retries. Price
-it in your own tables — this owns accurate usage, not your rates.
+Docs for the installed version ship in `node_modules/@vllnt/convex-metering/`: `README.md`,
+`docs/API.md`, `llms.txt`, `CHANGELOG.md` and the TypeScript `src/`. They match the installed
+version. Read them before writing code against this package.
 
-## Features
+## When to use
 
-- **Idempotent recording** — `idempotencyKey` makes a retry a no-op; the dedup
-  ledger is **separate from records**, so it survives `pruneRecords` (no
-  double-count after pruning).
-- **Per-meter aggregation** — `sum` (accumulate), `max` (peak), or `last`
-  (gauge), locked once usage exists.
-- **Corrections + freeze** — `adjust` posts signed refunds/credits (sum, never
-  below zero); `closePeriod` freezes a billed period so late events can't
-  restate it.
-- **Atomic limits** — `recordWithLimit` checks a cap and records in one
-  transaction (no read-then-write overage race).
-- **Reconciliation** — `verify` recomputes the rollup from records and flags
-  drift for billing audits.
-- **Lifecycle + GDPR** — `listMeters`/`listSubjectUsage` discovery, batched
-  `reset`, and `eraseSubject` (erase a subject across all meters).
-- **Period rollups** — each `(meter, subject, period)` rolls up independently;
-  reads are O(1).
-- **Host-owned periods** — `period` is an opaque string you choose (`"2026-06"`,
-  `"2026-W24"`, `"all"`); no date parsing, any calendar/timezone.
-- **Audit + retention** — raw records back every rollup; prune old records on
-  your schedule, rollups stay.
-- **Scopes** — global by default, or namespace per tenant.
-- **Fully typed** — quantities, periods, and units are concrete types end to
-  end; no `any`.
-- **Server-sourced time** — record timestamps come from the server, never the
-  caller.
+- Use it when you bill or report usage per subject and period (requests, bytes, seats) and a
+  retried event must not be counted twice.
+- Use it when a usage cap must be checked and recorded in one transaction (`recordWithLimit`).
+- Use it when a billed period must be frozen and corrections must leave an audit trail
+  (`closePeriod`, `adjust`, `verify`).
+- Do not use it when an allowance resets on a schedule and you read what remains: use
+  [`@vllnt/convex-quota`](https://oss.vllnt.com/packages/convex-quota).
+- Do not use it when users spend a prepaid balance: use
+  [`@vllnt/convex-wallet`](https://oss.vllnt.com/packages/convex-wallet).
+- Do not use it when you need to throttle requests per time window: use a rate limiter such as
+  `@convex-dev/rate-limiter`.
 
-## Installation
+## Install
 
 ```bash
 pnpm add @vllnt/convex-metering
 ```
 
-Node.js >=18; required peer: `convex@^1.45.0`. React >=18 is optional. The
-default npm channel is stable; `@vllnt/convex-metering@canary` tracks `main`.
-
-## For coding agents
-
-The docs are bundled at `node_modules/@vllnt/convex-metering/docs/`, with
-`README.md`, `CHANGELOG.md` and `llms.txt` at the package root. They match the
-installed version. Read them before writing code.
-
-## Usage
+## Quick start
 
 ```ts
 // convex/convex.config.ts
-import { defineApp } from "convex/server";
 import metering from "@vllnt/convex-metering/convex.config";
+import { defineApp } from "convex/server";
 
 const app = defineApp();
 app.use(metering);
@@ -86,191 +41,517 @@ export default app;
 ```
 
 ```ts
-// convex/usage.ts — host owns auth; pass an opaque subjectRef + period in.
-import { components } from "./_generated/api";
-import { mutation } from "./_generated/server";
-import { v } from "convex/values";
+// convex/usage.ts
 import { Metering } from "@vllnt/convex-metering";
+import { ConvexError, v } from "convex/values";
+
+import { components } from "./_generated/api.js";
+import { internalMutation, mutation, query } from "./_generated/server.js";
 
 const metering = new Metering(components.metering);
 
-export const meterApiCall = mutation({
-  args: { orgId: v.string(), requestId: v.string() },
-  handler: async (ctx, { orgId, requestId }) => {
-    return metering.record(ctx, "api_calls", orgId, 1, {
-      period: "2026-06",
-      idempotencyKey: requestId, // safe under retries
+export const setup = internalMutation({
+  args: {},
+  returns: v.boolean(),
+  handler: async (ctx) => {
+    const { created } = await metering.defineMeter(ctx, "api_calls", {
+      aggregation: "sum",
+      unit: "requests",
     });
+    return created;
+  },
+});
+
+export const trackApiCall = mutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (user === null) throw new ConvexError("not signed in");
+    const period = new Date().toISOString().slice(0, 7); // UTC month, e.g. "2026-11"
+    const result = await metering.record(ctx, "api_calls", user.tokenIdentifier, 1, {
+      period,
+    });
+    return result.recorded ? result.value : 0;
+  },
+});
+
+export const myUsage = query({
+  args: { period: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({ value: v.number(), count: v.number(), closed: v.boolean() }),
+  ),
+  handler: async (ctx, { period }) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (user === null) throw new ConvexError("not signed in");
+    return metering.usage(ctx, "api_calls", user.tokenIdentifier, { period });
   },
 });
 ```
 
-Read `usage(ctx, "api_calls", orgId, { period })` to display usage or bill at
-your own rate. Use `recordWithLimit` for atomic enforcement, not a
-read-then-record sequence. The wrapper above is illustrative: authenticate the
-caller, authorize the organization and derive trusted request IDs/periods in the
-host. After mounting, run `pnpm convex dev` to generate component references.
-See
-[`example/convex/example.ts`](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.ts).
+Run `npx convex dev` once to generate `components.metering`, then
+`npx convex run usage:setup` once. Each `trackApiCall` adds 1 to the caller's
+`api_calls` rollup for the current UTC month and returns the new total.
+`myUsage` returns `{ value, count, closed }`, or `null` before the first call.
+The component never reads auth: the host derives `subjectRef` (here the user's
+`tokenIdentifier`) and `period`, and prices the usage in its own tables.
 
-## Configuration and limits
-
-Client defaults: `defaultScope: "global"`, `defaultPeriod: "all"`. Omitted
-periods accumulate in one all-time bucket; no automatic calendar reset exists.
-`defineMeter` defaults to `aggregation: "sum"` and `unit: ""`.
-
-Idempotency keys are scoped to `(scope, meter)`, **not subject or period**; use
-a unique key per logical event across that meter. Keys are supported only on sum
-meters. Without a key, record/adjust calls are not retry-deduplicated. Pruning
-`seen` reopens replay; pruning records does not. Prune methods span every scope
-in the mount and must be admin-only. Cleanup batches default to 200 (integer
-1–500); returns count only the first pass. List queries and `verify` are not
-paginated and remain subject to Convex read limits.
-
-`verify.consistent` compares values, not counts. Even a positive
-`recordsRemaining` is insufficient after partial pruning: complete
-reconciliation requires the entire relevant record history. Pricing and payment
-processing belong to the host; use integer minor-units within JavaScript's safe
-precision.
-
-## Multiple mounts
-
-```ts
-app.use(metering, { name: "webMetering" });
-app.use(metering, { name: "gameMetering" });
-// new Metering(components.webMetering), new Metering(components.gameMetering)
-```
-
-Mounts isolate records, dedup keys and scheduled work; runtime scopes do not
-replace host authorization.
-
-## API Reference
-
-| Method                                                                                      | Kind     | Result                                                                         |
-| ------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
-| `defineMeter(ctx, key, { aggregation?, unit?, scope? })`                                    | mutation | `{ created: boolean }`                                                         |
-| `record(ctx, meter, subjectRef, quantity, { period?, idempotencyKey?, actorRef?, scope? })` | mutation | `{ recorded: true; value; count } \| { recorded: false; reason: "duplicate" }` |
-| `recordWithLimit(ctx, meter, subjectRef, quantity, limit, opts?)`                           | mutation | `RecordOutcome \| { recorded: false; reason: "limit_exceeded"; value; limit }` |
-| `adjust(ctx, meter, subjectRef, delta, opts?)`                                              | mutation | `RecordOutcome` (sum-only signed correction)                                   |
-| `closePeriod(ctx, meter, subjectRef, { period?, scope? })`                                  | mutation | `boolean` (freeze)                                                             |
-| `reset(ctx, meter, subjectRef, { period?, scope?, batch? })`                                | mutation | `number` (records removed this pass)                                           |
-| `eraseSubject(ctx, subjectRef, { scope?, batch? })`                                         | mutation | `number` (GDPR erasure)                                                        |
-| `pruneRecords(ctx, before, batch?)` · `pruneSeen(ctx, before, batch?)`                      | mutation | `number`                                                                       |
-| `getMeter(ctx, key, scope?)` · `listMeters(ctx, scope?)`                                    | query    | `MeterDefinition \| null` · `MeterDefinition[]`                                |
-| `usage(ctx, meter, subjectRef, { period?, scope? })`                                        | query    | `{ value, count, closed } \| null`                                             |
-| `listUsage(ctx, meter, subjectRef, scope?)`                                                 | query    | `{ period, value, count, closed }[]`                                           |
-| `listSubjectUsage(ctx, subjectRef, scope?)`                                                 | query    | `{ meter, period, value, count, closed }[]`                                    |
-| `verify(ctx, meter, subjectRef, { period?, scope? })`                                       | query    | `{ rollupValue, rollupCount, recomputedValue, recordsRemaining, consistent }`  |
+## API
 
 Full reference: [docs/API.md](docs/API.md).
 
-## React
+| Export | Import from | What it does |
+| --- | --- | --- |
+| [`Metering`](docs/API.md#metering) | `@vllnt/convex-metering` | Host client: `new Metering(components.metering, { defaultScope, defaultPeriod })` |
+| [`defineMeter(ctx, key, opts?)`](docs/API.md#definemeter) | `Metering` method, mutation | Create or update a meter; returns `{ created }` |
+| [`record(ctx, meter, subjectRef, quantity, opts?)`](docs/API.md#record) | `Metering` method, mutation | Record usage; returns the new rollup or `duplicate` |
+| [`recordWithLimit(ctx, meter, subjectRef, quantity, limit, opts?)`](docs/API.md#recordwithlimit) | `Metering` method, mutation | Record only if the rollup stays `<= limit`; else `limit_exceeded` |
+| [`adjust(ctx, meter, subjectRef, delta, opts?)`](docs/API.md#adjust) | `Metering` method, mutation | Signed correction on a `sum` meter; never below zero |
+| [`closePeriod(ctx, meter, subjectRef, opts?)`](docs/API.md#closeperiod) | `Metering` method, mutation | Freeze a period; returns `false` when it has no usage |
+| [`reset(ctx, meter, subjectRef, opts?)`](docs/API.md#reset) | `Metering` method, mutation | Delete one period's records and rollup in batches; returns this pass's record count |
+| [`eraseSubject(ctx, subjectRef, opts?)`](docs/API.md#erasesubject) | `Metering` method, mutation | Delete a subject's records and rollups in one scope; returns this pass's row count |
+| [`pruneRecords(ctx, before, batch?)`](docs/API.md#prunerecords) | `Metering` method, mutation | Delete raw records older than `before` (all scopes) |
+| [`pruneSeen(ctx, before, batch?)`](docs/API.md#pruneseen) | `Metering` method, mutation | Delete idempotency keys older than `before` (all scopes) |
+| [`getMeter(ctx, key, scope?)`](docs/API.md#getmeter) | `Metering` method, query | The meter definition, or `null` |
+| [`listMeters(ctx, scope?)`](docs/API.md#listmeters) | `Metering` method, query | Every meter in one scope |
+| [`usage(ctx, meter, subjectRef, opts?)`](docs/API.md#usage) | `Metering` method, query | `{ value, count, closed }` for one period, or `null` |
+| [`listUsage(ctx, meter, subjectRef, scope?)`](docs/API.md#listusage) | `Metering` method, query | Every period of one meter for a subject |
+| [`listSubjectUsage(ctx, subjectRef, scope?)`](docs/API.md#listsubjectusage) | `Metering` method, query | Every meter and period for a subject |
+| [`verify(ctx, meter, subjectRef, opts?)`](docs/API.md#verify) | `Metering` method, query | Recompute a rollup from surviving records and compare |
+| [`MeteringComponent`](docs/API.md#meteringcomponent) | `@vllnt/convex-metering` (type) | Type of `components.metering` |
+| [`MeteringOptions`](docs/API.md#meteringoptions) | `@vllnt/convex-metering` (type) | `{ defaultScope?, defaultPeriod? }` |
+| [`DefineMeterOptions`](docs/API.md#definemeteroptions) | `@vllnt/convex-metering` (type) | `{ aggregation?, unit?, scope? }` for `defineMeter` |
+| [`RecordOptions`](docs/API.md#recordoptions) | `@vllnt/convex-metering` (type) | `{ period?, idempotencyKey?, actorRef?, scope? }` |
+| [`RecordOutcome`](docs/API.md#recordoutcome) | `@vllnt/convex-metering` (type) | Result of `record` and `adjust` |
+| [`LimitOutcome`](docs/API.md#limitoutcome) | `@vllnt/convex-metering` (type) | Result of `recordWithLimit` |
+| [`MeterDefinition`](docs/API.md#meterdefinition) | `@vllnt/convex-metering` (type) | Result of `getMeter` and `listMeters` |
+| [`Usage`](docs/API.md#usage-type) | `@vllnt/convex-metering` (type) | Result of `usage` |
+| [`UsageEntry`](docs/API.md#usageentry) | `@vllnt/convex-metering` (type) | One row of `listUsage` |
+| [`SubjectUsageEntry`](docs/API.md#subjectusageentry) | `@vllnt/convex-metering` (type) | One row of `listSubjectUsage` |
+| [`VerifyResult`](docs/API.md#verifyresult) | `@vllnt/convex-metering` (type) | Result of `verify` |
+| [`Aggregation`](docs/API.md#aggregation) | `@vllnt/convex-metering` (type) | `"sum" \| "max" \| "last"` |
+| [`useUsage`](docs/API.md#useusage) | `@vllnt/convex-metering/react` | React hook over your `usage` wrapper; derives `remaining`, `fraction`, `exceeded` |
+| [`useUsageList`](docs/API.md#useusagelist) | `@vllnt/convex-metering/react` | React hook over your `listUsage` wrapper; `UsageEntry[] \| undefined` |
+| [`UsageView`](docs/API.md#usageview) | `@vllnt/convex-metering/react` (type) | Result of `useUsage` |
+| [`default` (component config)](docs/API.md#convexconfig) | `@vllnt/convex-metering/convex.config` | Pass to `app.use(...)` |
+| [`register`](docs/API.md#register) | `@vllnt/convex-metering/test` | Mount the component in a `convex-test` instance |
+| [`ComponentApi`](docs/API.md#componentapi) | `@vllnt/convex-metering/_generated/component` | Generated type of the mounted component |
 
-Optional, tree-shakeable hooks via `@vllnt/convex-metering/react` (`react` is an
-optional peer dep). Each wraps `useQuery` over a query reference **you
-re-export** from your app — the component never owns your `api`. `useUsage`
-derives a progress-bar view from an optional `limit`.
+## Common tasks
+
+Define meters once, enforce a monthly cap, record events that a queue or webhook
+may deliver more than once, refund, close a month and list its invoice lines.
+`seats` uses `max`, so its rollup is the peak value recorded in the period:
+
+```ts
+// convex/billing.ts
+import { Metering } from "@vllnt/convex-metering";
+import { ConvexError, v } from "convex/values";
+
+import { components } from "./_generated/api.js";
+import { internalMutation, internalQuery, mutation } from "./_generated/server.js";
+
+const metering = new Metering(components.metering);
+
+export const setupMeters = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await metering.defineMeter(ctx, "api_calls", { aggregation: "sum", unit: "requests" });
+    await metering.defineMeter(ctx, "egress_bytes", { aggregation: "sum", unit: "bytes" });
+    await metering.defineMeter(ctx, "seats", { aggregation: "max", unit: "seats" });
+    return null;
+  },
+});
+
+export const callApi = mutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (user === null) throw new ConvexError("not signed in");
+    const period = new Date().toISOString().slice(0, 7);
+    const result = await metering.recordWithLimit(
+      ctx,
+      "api_calls",
+      user.tokenIdentifier,
+      1,
+      10_000,
+      { period },
+    );
+    if (!result.recorded) throw new ConvexError("monthly API call limit reached");
+    return result.value;
+  },
+});
+
+export const ingestEgress = internalMutation({
+  args: { subjectRef: v.string(), eventId: v.string(), bytes: v.number(), period: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const result = await metering.record(ctx, "egress_bytes", args.subjectRef, args.bytes, {
+      period: args.period,
+      idempotencyKey: `egress:${args.eventId}`,
+    });
+    return result.recorded;
+  },
+});
+
+export const refundCalls = internalMutation({
+  args: { subjectRef: v.string(), period: v.string(), calls: v.number(), refundId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const result = await metering.adjust(ctx, "api_calls", args.subjectRef, -args.calls, {
+      period: args.period,
+      idempotencyKey: `refund:${args.refundId}`,
+    });
+    return result.recorded;
+  },
+});
+
+export const closeMonth = internalMutation({
+  args: { subjectRef: v.string(), period: v.string() },
+  returns: v.number(),
+  handler: async (ctx, { subjectRef, period }) => {
+    let closed = 0;
+    for (const meter of await metering.listMeters(ctx)) {
+      if (await metering.closePeriod(ctx, meter.key, subjectRef, { period })) closed++;
+    }
+    return closed;
+  },
+});
+
+export const invoiceLines = internalQuery({
+  args: { subjectRef: v.string(), period: v.string() },
+  returns: v.array(v.object({ meter: v.string(), value: v.number(), closed: v.boolean() })),
+  handler: async (ctx, { subjectRef, period }) => {
+    const rows = await metering.listSubjectUsage(ctx, subjectRef);
+    return rows
+      .filter((row) => row.period === period)
+      .map(({ meter, value, closed }) => ({ meter, value, closed }));
+  },
+});
+```
+
+`ingestEgress` returns `false` for a redelivered `eventId`. Idempotency keys
+are scoped to `(scope, meter)`, not to subject or period, so a key must be
+unique across every subject and period of its meter. Prefix keys by source
+(`egress:`, `refund:`) so that two sources writing keys to the same meter cannot
+collide. Post refunds before `closeMonth`: `adjust` into a closed period throws
+`PERIOD_CLOSED`.
+
+Prune old audit rows, erase a user, and check a rollup against its records:
+
+```ts
+// convex/maintenance.ts
+import { Metering } from "@vllnt/convex-metering";
+import { v } from "convex/values";
+
+import { components } from "./_generated/api.js";
+import { internalMutation, internalQuery } from "./_generated/server.js";
+
+const metering = new Metering(components.metering);
+const DAY = 24 * 60 * 60 * 1000;
+
+export const prune = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    await metering.pruneRecords(ctx, Date.now() - 400 * DAY);
+    await metering.pruneSeen(ctx, Date.now() - 30 * DAY);
+    return null;
+  },
+});
+
+export const eraseUser = internalMutation({
+  args: { subjectRef: v.string() },
+  returns: v.number(),
+  handler: (ctx, { subjectRef }) => metering.eraseSubject(ctx, subjectRef),
+});
+
+export const audit = internalQuery({
+  args: { meter: v.string(), subjectRef: v.string(), period: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { meter, subjectRef, period }) => {
+    const result = await metering.verify(ctx, meter, subjectRef, { period });
+    return result.consistent;
+  },
+});
+```
+
+Call `prune` from a cron. Rollups are never pruned. `verify` re-folds only the
+records that survive, so once `pruneRecords` removes part of a period it can
+report `consistent: false`; audit before you prune. Keep `pruneSeen`'s cutoff older
+than your longest retry window: a pruned key no longer dedupes.
+
+Show a live usage bar in React. The hooks take a public query reference that
+your app exports; its args must include `meter`, `subjectRef` and `period`:
+
+```ts
+// convex/meters.ts
+import { Metering } from "@vllnt/convex-metering";
+import { ConvexError, v } from "convex/values";
+
+import { components } from "./_generated/api.js";
+import { query } from "./_generated/server.js";
+
+const metering = new Metering(components.metering);
+
+export const usageFor = query({
+  args: { meter: v.string(), subjectRef: v.string(), period: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({ value: v.number(), count: v.number(), closed: v.boolean() }),
+  ),
+  handler: async (ctx, { meter, subjectRef, period }) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (user?.tokenIdentifier !== subjectRef) throw new ConvexError("not allowed");
+    return metering.usage(ctx, meter, subjectRef, { period });
+  },
+});
+```
 
 ```tsx
-// convex/usage.ts — re-export a host wrapper (auth gated)
-// export const myUsage = query({
-//   args: { meter: v.string(), subjectRef: v.string(), period: v.string() },
-//   handler: (ctx, { meter, subjectRef, period }) =>
-//     metering.usage(ctx, meter, subjectRef, { period }) });
-// Add host authorization before exposing this illustrative wrapper.
-
+// src/UsageBar.tsx
 import { useUsage } from "@vllnt/convex-metering/react";
-import { api } from "@/convex/_generated/api";
 
-function UsageBar({ orgId }: { orgId: string }) {
-  const u = useUsage(
-    api.usage.myUsage,
-    { meter: "api_calls", subjectRef: orgId, period: "2026-06" },
-    { limit: 10000 },
+import { api } from "../convex/_generated/api.js";
+
+export function UsageBar({ subjectRef, period }: { subjectRef: string; period: string }) {
+  const usage = useUsage(
+    api.meters.usageFor,
+    { meter: "api_calls", subjectRef, period },
+    { limit: 10_000 },
   );
-  if (u.isLoading) return <Spinner />;
+  if (usage.isLoading) return null;
   return (
-    <Meter
-      value={u.fraction}
-      label={`${u.value} / ${u.limit}`}
-      warn={u.exceeded}
-    />
+    <progress max={1} value={usage.fraction ?? 0}>
+      {usage.value} / {usage.limit}
+    </progress>
   );
 }
 ```
 
-| Hook                                   | Wraps       | Returns                                                                         |
-| -------------------------------------- | ----------- | ------------------------------------------------------------------------------- |
-| `useUsage(usageRef, args, { limit? })` | `usage`     | `{ isLoading, value, count, closed, limit?, remaining?, fraction?, exceeded? }` |
-| `useUsageList(listUsageRef, args)`     | `listUsage` | `UsageEntry[] \| undefined`                                                     |
+Mount the component twice. Named mounts share no tables or scheduled work;
+scopes are namespaces inside one mount, not access control:
 
-## Security
+```ts
+// convex/convex.config.ts
+import metering from "@vllnt/convex-metering/convex.config";
+import { defineApp } from "convex/server";
 
-- Auth-agnostic — the host resolves identity and decides who may define meters,
-  record, reset, or read.
-- Tables sandboxed — reached only through the exported functions; `subjectRef`,
-  `scope`, and `period` stay opaque.
-- Server-sourced timestamps — a caller cannot supply record time.
+const app = defineApp();
+app.use(metering, { name: "webMetering" });
+app.use(metering, { name: "gameMetering" });
+export default app;
+```
 
-See [docs/API.md](docs/API.md).
+```ts
+// convex/clients.ts
+import { Metering } from "@vllnt/convex-metering";
+
+import { components } from "./_generated/api.js";
+
+export const web = new Metering(components.webMetering);
+export const game = new Metering(components.gameMetering, {
+  defaultScope: "season_1",
+  defaultPeriod: "2026-11",
+});
+```
+
+## Errors and fixes
+
+Component errors are `ConvexError`s whose `data` is `{ code, message }`. Catch
+them in the host with `error instanceof ConvexError` and read `error.data.code`.
+
+| Code | Message | Cause | Fix |
+| --- | --- | --- | --- |
+| `INVALID_ARGUMENT` | `<name> must not be an empty string` | `defineMeter` got an empty `scope` or `key`; `record`, `recordWithLimit` or `adjust` got an empty `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or `actorRef` | Pass non-empty strings; omit an optional field instead of passing `""`; check that `defaultScope` and `defaultPeriod` are not `""` |
+| `INVALID_QUANTITY` | `quantity must be a non-negative finite number` | `record` or `recordWithLimit` got a negative, `NaN` or infinite `quantity` | Pass a finite number `>= 0`; post negative corrections with `adjust` |
+| `INVALID_QUANTITY` | `delta must be a finite number` | `adjust` got a `NaN` or infinite `delta` | Pass a finite `delta` |
+| `INVALID_LIMIT` | `limit must be a non-negative finite number` | `recordWithLimit` got a negative, `NaN` or infinite `limit` | Pass a finite number `>= 0` |
+| `METER_NOT_FOUND` | `no meter "<key>" in scope "<scope>" — define it first`, or `no meter "<meter>" in scope "<scope>"` from `verify` | `record`, `recordWithLimit`, `adjust` or `verify` named a meter that does not exist in that scope | Call `defineMeter` first, in the same scope; check the client's `defaultScope` |
+| `IDEMPOTENCY_NOT_SUPPORTED` | `idempotencyKey is only meaningful for sum meters, not max/last gauges` | `record` or `recordWithLimit` passed an `idempotencyKey` to a `max` or `last` meter | Omit `idempotencyKey` for `max` and `last` meters |
+| `PERIOD_CLOSED` | `this period is closed; record into the next open period` | `record`, `recordWithLimit` or `adjust` targeted a period frozen by `closePeriod`, including a retry of an event already recorded there | Record into an open period; post corrections before closing |
+| `QUANTITY_OVERFLOW` | `the rollup would exceed the largest finite number` | `record` or `adjust` would push a `sum` rollup to `Infinity` | Check the input for a unit or loop bug |
+| `AGGREGATION_LOCKED` | `a meter's aggregation is immutable once usage exists; define a new meter key` | `defineMeter` changed `aggregation` while the meter has a rollup in that scope; omitting `aggregation` sends `"sum"` | Pass the meter's current `aggregation`, or define a new meter key |
+| `ADJUST_REQUIRES_SUM` | `adjust is only defined for sum meters` | `adjust` on a `max` or `last` meter | Use `adjust` on `sum` meters only |
+| `ADJUST_BELOW_ZERO` | `the adjustment would make the rollup negative` | `adjust` with a `delta` below `-value` | Read `usage` first and cap the negative `delta` at the current value |
+| `INVALID_BATCH` | `batch must be an integer between 1 and 500` | `reset`, `eraseSubject`, `pruneRecords` or `pruneSeen` got a `batch` that is not an integer in 1..500 | Omit `batch` (default 200) or pass an integer in 1..500 |
+| `INVALID_BEFORE` | `before must be finite` | `pruneRecords` or `pruneSeen` got a `NaN` or infinite `before` | Pass an absolute ms timestamp, for example `Date.now() - 30 * DAY` |
+
+Arguments of the wrong type are rejected by Convex argument validation before
+the component runs. Outcomes that are not errors: a repeated `idempotencyKey`
+returns `{ recorded: false, reason: "duplicate" }`, and `recordWithLimit` over
+the limit returns `{ recorded: false, reason: "limit_exceeded", value, limit }`.
+
+## Limits and gotchas
+
+- Client defaults: `defaultScope: "global"`, `defaultPeriod: "all"`. A call
+  that omits `period` writes to the `"all"` bucket, which never resets; the
+  component has no calendar. `period` is an opaque string the host chooses.
+- `defineMeter` defaults to `aggregation: "sum"` and `unit: ""`, and an update
+  writes both. Re-running it without `aggregation` turns a `max` or `last`
+  meter into `sum` when it has no rollup, or throws `AGGREGATION_LOCKED`.
+- `reset`, `eraseSubject`, `pruneRecords` and `pruneSeen` delete up to `batch`
+  rows per pass (default 200, integer 1..500) and schedule the next pass while a
+  pass is full. They return only the first pass's count.
+- `listMeters`, `listUsage`, `listSubjectUsage` and `verify` are not paginated:
+  they read every matching row and are subject to Convex read limits.
+- Idempotency keys are scoped to `(scope, meter)`, not to subject or period:
+  the same key for another subject returns `duplicate`. Keys survive `reset`,
+  `eraseSubject` and `pruneRecords`; only `pruneSeen` removes them. Without a key
+  every call records again.
+- Never take `idempotencyKey` from an untrusted client: reusing one key makes
+  every later call return `duplicate`, so that usage is not recorded.
+- `PERIOD_CLOSED` is checked before the duplicate check, so retrying an event
+  already recorded into a now-closed period throws instead of returning
+  `duplicate`.
+- `recordWithLimit` records when the projected rollup is `<= limit`. For `max`
+  and `last` meters the projection is the new peak or the new value. A
+  `limit_exceeded` result does not store the `idempotencyKey`.
+- `adjust` (and every `record`) adds 1 to `count`. `adjust` with a positive
+  `delta` on a period with no usage creates its rollup.
+- These return without error and change nothing: `closePeriod` on a period
+  with no usage (`false`) or an already-closed one (`true`, freeze time kept);
+  `reset` and `eraseSubject` for an unknown subject (`0`); `usage`, `getMeter`
+  and `listUsage` for an unknown meter (`null` or `[]`); `listSubjectUsage` for
+  a subject with no usage (`[]`).
+- Only `defineMeter`, `record`, `recordWithLimit` and `adjust` reject empty
+  strings. The other functions treat `""` as an ordinary lookup value:
+  `closePeriod`, `reset`, `eraseSubject`, `getMeter`, `listMeters`, `usage`,
+  `listUsage` and `listSubjectUsage` match only rows stored with that empty
+  string (0.2.0 never writes them; 0.1.0 accepted them), and `verify` throws
+  `METER_NOT_FOUND` unless such a meter exists.
+- `reset` and `eraseSubject` also delete closed periods. `eraseSubject` works in
+  one scope and does not touch `seen` keys.
+- `pruneRecords` and `pruneSeen` take no scope: they delete across every scope
+  in the mount.
+- `verify.consistent` compares values, not counts, and is complete only while
+  the period's full record history survives. With no rollup and no records it
+  returns zeros and `consistent: true`.
+- `sum` accumulates IEEE-754 doubles. For exact money, record integer minor
+  units (bytes, mills) and price in the host.
+- Every write for one `(meter, subject, period)` updates the same rollup
+  document, so concurrent writes to it serialize.
+- Timestamps (`createdAt`, record and key times) come from the server clock; no
+  method accepts a caller timestamp. `before` compares against them in ms.
+- The component sets no maximum length for keys, scopes, `subjectRef` or
+  `period`; Convex value limits apply.
+
+## Compatibility
+
+- Peer dependency `convex@^1.45.0`. This repository develops and tests against
+  convex 1.51.
+- `react >=18` is an optional peer dependency, needed only for
+  `@vllnt/convex-metering/react` (which also imports `convex/react`).
+- Node.js `>=18` (`engines.node`). The `convex` peer needs a newer Node:
+  1.45 needs `>=20`, 1.51 needs `>=22` (`npm view convex@1.51.0 engines`).
+- ES modules only (`"type": "module"`); no CommonJS build ships.
+- `@vllnt/convex-metering/test` ships as TypeScript source (`src/test.ts`) and
+  needs `convex-test` and Vite's `import.meta.glob` (for example through
+  `vitest`), with `vite/client` types.
 
 ## Testing
 
-```bash
-pnpm test           # single run
-pnpm test:coverage  # enforced 100% on covered files
-```
+Mount the component in your own `convex-test` suite with `register`. This test
+uses the Quick start's `convex/usage.ts` and runs in Vitest's `edge-runtime`
+environment (`@edge-runtime/vm`). Use the glob `./**/*.*s` (the pattern
+`convex-test` uses by default): it also matches the `.js` files Convex codegen
+writes to `convex/_generated/`. `./**/*.ts` finds that directory only through
+its `.d.ts` files; without them `convex-test` throws
+`Could not find the "_generated" directory`.
 
-Tests use the simulated `convex-test` backend (`@edge-runtime/vm`), not a real
-Convex deployment; they do not prove production concurrency or scheduler
-delivery.
-
-### Testing your app
-
-`@vllnt/convex-metering/test` exports `register(t, name = "metering")` to mount
-the component in your app's own `convexTest(schema, modules)` instance, whatever
-its tables. It needs `convex-test` and `vitest` (with Vite's `import.meta.glob`)
-in the consuming app:
+The test imports your app's `convex/schema.ts`. The component's tables live in
+the component, not in this schema, so any schema works; a minimal one:
 
 ```ts
-/// <reference types="vite/client" />
-import { convexTest } from "convex-test";
-import { register } from "@vllnt/convex-metering/test";
-import schema from "./schema";
+// convex/schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
 
-const t = convexTest(schema, import.meta.glob("./**/*.ts"));
-register(t);
+export default defineSchema({
+  notes: defineTable({ body: v.string() }),
+});
 ```
+
+```ts
+// convex/usage.test.ts
+/// <reference types="vite/client" />
+import { register } from "@vllnt/convex-metering/test";
+import { convexTest } from "convex-test";
+import { expect, test, vi } from "vitest";
+
+import { api, internal } from "./_generated/api.js";
+import schema from "./schema.js";
+
+test("a signed-in user's API calls are metered per UTC month", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-15T12:00:00Z"));
+  const t = convexTest(schema, import.meta.glob("./**/*.*s"));
+  register(t);
+  await t.mutation(internal.usage.setup, {});
+  const user = t.withIdentity({ tokenIdentifier: "user-1" });
+  await user.mutation(api.usage.trackApiCall, {});
+  expect(await user.mutation(api.usage.trackApiCall, {})).toBe(2);
+  expect(await user.query(api.usage.myUsage, { period: "2026-11" })).toEqual({
+    value: 2,
+    count: 2,
+    closed: false,
+  });
+  vi.useRealTimers();
+});
+```
+
+`register(t, name)` takes the mount name when you used
+`app.use(metering, { name })`; the default is `"metering"`.
+
+This repository's own tests (`pnpm test`, and `pnpm test:coverage` with 100%
+coverage enforced) use the simulated `convex-test` backend, not a real Convex
+deployment; they do not prove production concurrency or scheduler delivery.
+
+## Security
+
+- The component does not authenticate. The host must authorize every call and
+  derive `subjectRef`, `scope`, `period` and `idempotencyKey` itself. A wrapper
+  that passes a client-supplied `subjectRef` lets that client read or write any
+  subject.
+- Component functions are reachable only through the host's own functions;
+  `subjectRef`, `actorRef`, `scope` and `period` are opaque strings.
+- `pruneRecords` and `pruneSeen` act on every scope of a mount: expose them to
+  administrators only.
+- `eraseSubject` deletes a subject's records (including their `actorRef`) and
+  rollups in one scope. It leaves `seen` keys, which hold no `subjectRef`; do
+  not put personal data in idempotency keys.
+
+Report vulnerabilities as described in
+[SECURITY.md](https://github.com/vllnt/convex-metering/blob/main/SECURITY.md).
 
 ## Related packages
 
-- [`@vllnt/convex-quota`](https://oss.vllnt.com/packages/convex-quota) — use for
-  allowances that reset on a schedule (calendar, rolling or epoch windows) with
-  a readable remaining amount. Use metering to record what was consumed per
-  billing period.
-- [`@vllnt/convex-wallet`](https://oss.vllnt.com/packages/convex-wallet) — use
-  for prepaid, consumable balances with atomic spend. Use metering for usage you
-  bill afterwards.
-- [`@vllnt/convex-idempotency`](https://oss.vllnt.com/packages/convex-idempotency)
-  — use for exactly-once handling of other retried operations. Metering already
-  deduplicates its own `record`/`adjust` calls by `idempotencyKey`.
+None. No other @vllnt package is used with this one in code (no dependency, shared test or example).
 
 ## Contributing
 
 See
 [CONTRIBUTING.md](https://github.com/vllnt/convex-metering/blob/main/CONTRIBUTING.md).
 
-## Author
+## Links
 
-Built by [bntvllnt](https://github.com/bntvllnt) ·
-[bntvllnt.com](https://bntvllnt.com) · [X @bntvllnt](https://x.com/bntvllnt)
-
-If this is useful, [sponsor the work](https://github.com/sponsors/bntvllnt).
+- Docs and changelog: [oss.vllnt.com/packages/convex-metering](https://oss.vllnt.com/packages/convex-metering) · [release feed](https://oss.vllnt.com/packages/convex-metering/rss.xml)
+- All @vllnt packages: [oss.vllnt.com](https://oss.vllnt.com) · [search packages and docs on index.vllnt.com](https://index.vllnt.com)
+- Source and issues: [GitHub](https://github.com/vllnt/convex-metering) · [issues](https://github.com/vllnt/convex-metering/issues) · [npm](https://www.npmjs.com/package/@vllnt/convex-metering)
+- Questions and updates: [Discord](https://bntvllnt.com/discord) · [X @bntvllnt](https://x.com/bntvllnt)
+- Company and author: [vllnt.com](https://vllnt.com) · [bntvllnt.com](https://bntvllnt.com) · [GitHub @bntvllnt](https://github.com/bntvllnt) · [LinkedIn](https://linkedin.com/in/bntvllnt)
+- Sponsor: [GitHub Sponsors](https://github.com/sponsors/bntvllnt)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
+
+[![npm version of @vllnt/convex-metering](https://img.shields.io/npm/v/@vllnt/convex-metering.svg)](https://www.npmjs.com/package/@vllnt/convex-metering)
+[![CI status](https://github.com/vllnt/convex-metering/actions/workflows/ci.yml/badge.svg)](https://github.com/vllnt/convex-metering/actions/workflows/ci.yml)
 
 ---
 
-Part of vllnt oss: https://oss.vllnt.com
+Part of [vllnt open source](https://oss.vllnt.com) · [Package page](https://oss.vllnt.com/packages/convex-metering) · [vllnt.com](https://vllnt.com) · Built by [bntvllnt](https://bntvllnt.com)
