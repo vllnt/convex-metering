@@ -8,6 +8,14 @@ override what you may have learned about Convex from training data.
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 <!-- convex-ai-end -->
 
+`example/convex/_generated/ai/guidelines.md` is gitignored, so a fresh clone lacks it. Fetch it:
+`mkdir -p example/convex/_generated/ai && curl -fsSL https://version.convex.dev/v1/guidelines -o example/convex/_generated/ai/guidelines.md`.
+Second option: `pnpm exec convex ai-files install`. It also runs `npx --yes skills@latest` (unpinned,
+outside pnpm's release-age gate), rewrites the Convex section above and creates `CLAUDE.md`,
+`skills-lock.json`, `.claude/skills/` and `.agents/skills/`. Commit none of them: `git restore
+AGENTS.md`, delete exactly those four, then `.claude/` or `.agents/` only if empty. Never touch
+`.claude/worktrees/` (`pnpm check:agents` fails while `CLAUDE.md` or `.claude` exists).
+
 # @vllnt/convex-metering
 
 Usage metering as a Convex component: idempotent usage events rolled up per billing period, with
@@ -173,6 +181,7 @@ Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).
 
 ## Generated code
 
-- Every `**/_generated/**` file is owned exclusively by Convex CLI codegen.
+- Every `**/_generated/**` file is owned exclusively by Convex CLI codegen, except the gitignored
+  `example/convex/_generated/ai/` (fetched as described at the top of this file).
 - Never create, edit, lint, or format generated files manually.
 - Run `pnpm codegen` to regenerate them and commit the generated output unchanged.
