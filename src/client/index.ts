@@ -262,7 +262,12 @@ export class Metering {
     meter: string,
     subjectRef: string,
     delta: number,
-    opts: { period?: string; idempotencyKey?: string; actorRef?: string; scope?: string } = {},
+    opts: {
+      period?: string | undefined;
+      idempotencyKey?: string | undefined;
+      actorRef?: string | undefined;
+      scope?: string | undefined;
+    } = {},
   ): Promise<RecordOutcome> {
     return ctx.runMutation(this.component.mutations.adjust, {
       scope: this.scopeOf(opts.scope),
@@ -284,7 +289,7 @@ export class Metering {
     ctx: RunMutationCtx,
     meter: string,
     subjectRef: string,
-    opts: { period?: string; scope?: string } = {},
+    opts: { period?: string | undefined; scope?: string | undefined } = {},
   ): Promise<boolean> {
     return ctx.runMutation(this.component.mutations.closePeriod, {
       scope: this.scopeOf(opts.scope),
@@ -303,7 +308,7 @@ export class Metering {
     ctx: RunMutationCtx,
     meter: string,
     subjectRef: string,
-    opts: { period?: string; scope?: string; batch?: number } = {},
+    opts: { period?: string | undefined; scope?: string | undefined; batch?: number | undefined } = {},
   ): Promise<number> {
     return ctx.runMutation(this.component.mutations.reset, {
       scope: this.scopeOf(opts.scope),
@@ -322,7 +327,7 @@ export class Metering {
   eraseSubject(
     ctx: RunMutationCtx,
     subjectRef: string,
-    opts: { scope?: string; batch?: number } = {},
+    opts: { scope?: string | undefined; batch?: number | undefined } = {},
   ): Promise<number> {
     return ctx.runMutation(this.component.mutations.eraseSubject, {
       scope: this.scopeOf(opts.scope),
@@ -386,7 +391,7 @@ export class Metering {
     ctx: RunQueryCtx,
     meter: string,
     subjectRef: string,
-    opts: { period?: string; scope?: string } = {},
+    opts: { period?: string | undefined; scope?: string | undefined } = {},
   ): Promise<Usage | null> {
     return ctx.runQuery(this.component.queries.usage, {
       scope: this.scopeOf(opts.scope),
@@ -431,7 +436,7 @@ export class Metering {
     ctx: RunQueryCtx,
     meter: string,
     subjectRef: string,
-    opts: { period?: string; scope?: string } = {},
+    opts: { period?: string | undefined; scope?: string | undefined } = {},
   ): Promise<VerifyResult> {
     return ctx.runQuery(this.component.queries.verify, {
       scope: this.scopeOf(opts.scope),

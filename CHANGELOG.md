@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format is based on
 - `useUsage` clamps `fraction` to its documented `0..1` range when usage is over the limit.
 - `@vllnt/convex-metering/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
   relative imports, Vite client types referenced).
+- Client and React hook option types accept an explicit `undefined` for optional fields
+  (`period?: string | undefined`, …), so hosts using `exactOptionalPropertyTypes` can pass optional
+  args straight through.
 
 ### Changed
 
@@ -39,10 +42,11 @@ All notable changes to this project are documented here. The format is based on
 - Every push to `main` that changes the package or its shipped docs publishes a `canary`; a
   repository variable no longer gates it. Canaries never move `latest`.
 - Develop and test against `convex` 1.51 and `convex-test` 0.0.73, and move the development
-  toolchain to ESLint 10, jsdom 31, `@vllnt/typescript` 3 and Vitest 5.1.1 (dev-only). The `convex`
-  peer range (`^1.45.0`) is unchanged. Under `@vllnt/typescript` 3 (`exactOptionalPropertyTypes`),
-  the client and component omit an unset `idempotencyKey` or `actorRef` instead of passing
-  `undefined`; stored data and the published entry-point types are unchanged.
+  toolchain to ESLint 10, jsdom 31, `@vllnt/typescript` 3 and Vitest 5.1.1 (dev-only); bump the
+  `minimatch` override from 11.0.5 to 11.0.9. The `convex` peer range (`^1.45.0`) is unchanged. Under
+  `@vllnt/typescript` 3 (`exactOptionalPropertyTypes`), the client and component omit an unset
+  `idempotencyKey` or `actorRef` instead of passing `undefined`; stored data is unchanged.
+  `typecheck:ci` also type-checks the example host app.
 
 ## [0.1.0] - 2026-09-01
 

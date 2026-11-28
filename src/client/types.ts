@@ -6,31 +6,31 @@ export type Aggregation = "sum" | "max" | "last";
 /** Construction options for the {@link Metering} client. */
 export interface MeteringOptions {
   /** Namespace applied when a call omits `scope`. Default `"global"`. */
-  defaultScope?: string;
+  defaultScope?: string | undefined;
   /** Period bucket applied when a call omits `period`. Default `"all"`. */
-  defaultPeriod?: string;
+  defaultPeriod?: string | undefined;
 }
 
 /** Per-call options for {@link Metering.defineMeter}. */
 export interface DefineMeterOptions {
   /** Aggregation rule for this meter. Default `"sum"`. */
-  aggregation?: Aggregation;
+  aggregation?: Aggregation | undefined;
   /** Display unit label (e.g. `"requests"`, `"GB"`). Default `""`. */
-  unit?: string;
+  unit?: string | undefined;
   /** Namespace for this meter. Defaults to the client `defaultScope`. */
-  scope?: string;
+  scope?: string | undefined;
 }
 
 /** Per-call options for {@link Metering.record} / {@link Metering.recordWithLimit}. */
 export interface RecordOptions {
   /** Period bucket (opaque host string). Defaults to the client `defaultPeriod`. */
-  period?: string;
+  period?: string | undefined;
   /** Idempotency key — a repeat with the same key is a no-op (sum meters only). */
-  idempotencyKey?: string;
+  idempotencyKey?: string | undefined;
   /** Opaque actor ref stored on the record for the billing audit trail. */
-  actorRef?: string;
+  actorRef?: string | undefined;
   /** Namespace. Defaults to the client `defaultScope`. */
-  scope?: string;
+  scope?: string | undefined;
 }
 
 /** A meter definition, as returned by {@link Metering.getMeter} / {@link Metering.listMeters}. */
