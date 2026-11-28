@@ -401,6 +401,10 @@ the limit returns `{ recorded: false, reason: "limit_exceeded", value, limit }`.
   pass is full. They return only the first pass's count.
 - `listMeters`, `listUsage`, `listSubjectUsage` and `verify` are not paginated:
   they read every matching row and are subject to Convex read limits.
+- `listUsage` is sorted by `period` string. `listMeters` returns meters in the
+  order they were first defined, and `listSubjectUsage` returns rollups in the
+  order they were created (not by meter or period); sort in the host if you
+  need another order.
 - Idempotency keys are scoped to `(scope, meter)`, not to subject or period:
   the same key for another subject returns `duplicate`. Keys survive `reset`,
   `eraseSubject` and `pruneRecords`; only `pruneSeen` removes them. Without a key
@@ -436,7 +440,10 @@ the limit returns `{ recorded: false, reason: "limit_exceeded", value, limit }`.
 - `sum` accumulates IEEE-754 doubles. For exact money, record integer minor
   units (bytes, mills) and price in the host.
 - Every write for one `(meter, subject, period)` updates the same rollup
-  document, so concurrent writes to it serialize.
+  document, so concurrent writes to it serialize. At very high write rates on
+  one rollup, a write can exhaust Convex's own conflict retries and fail with
+  Convex's concurrency error (not a `ConvexError`). That write did not commit,
+  so the host may retry it.
 - Timestamps (`createdAt`, record and key times) come from the server clock; no
   method accepts a caller timestamp. `before` compares against them in ms.
 - `defineMeter`, `record`, `recordWithLimit` and `adjust` cap every string

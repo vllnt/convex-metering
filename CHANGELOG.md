@@ -4,30 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - Unreleased
-
-### Fixed
-
-- **Breaking:** Reject empty-string identifiers (`scope` and `key` on `defineMeter`; `scope`, `meter`,
-  `subjectRef`, `period`, `idempotencyKey` and `actorRef` on `record`, `recordWithLimit` and `adjust`)
-  with `ConvexError({ code: "INVALID_ARGUMENT" })` instead of silently bucketing usage under an empty
-  key. Callers passing an empty string, which 0.1.0 accepted, now get a `ConvexError` instead of
-  success.
-- `closePeriod` on an already-closed period is a no-op that keeps the original freeze time instead
-  of rewriting it.
-- Reject a `sum` rollup that would overflow to `Infinity` (`QUANTITY_OVERFLOW`) in `record` and
-  `adjust`; previously the rollup silently became `Infinity` and could not be corrected.
-- `useUsage` clamps `fraction` to its documented `0..1` range when usage is over the limit.
-- `@vllnt/convex-metering/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
-  relative imports, Vite client types referenced).
-- Client and React hook option types accept an explicit `undefined` for optional fields
-  (`period?: string | undefined`, …), so hosts using `exactOptionalPropertyTypes` can pass optional
-  args straight through.
-- `register()` from `/test` accepts a host app's `convexTest(hostSchema, modules)` instance. It was
-  typed against the component's own schema, so any host schema with other tables failed with TS2345.
+## [0.2.0] - 2026-11-28
 
 ### Changed
 
+- **Breaking:** `defineMeter` (`scope`, `key`) and `record`, `recordWithLimit` and `adjust` (`scope`,
+  `meter`, `subjectRef`, `period`, `idempotencyKey`, `actorRef`) reject an empty string with
+  `ConvexError({ code: "INVALID_ARGUMENT" })` (`<name> must not be an empty string`); 0.1.0 accepted
+  it and bucketed the usage under the empty key. Omit an optional field instead of passing `""`,
+  and check that `defaultScope` and `defaultPeriod` are not `""`.
 - **Breaking:** `defineMeter` (`scope`, `key`, `unit`) and `record`, `recordWithLimit` and `adjust`
   (`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey`, `actorRef`) reject a string longer
   than 256 UTF-16 code units (JavaScript `.length`) with `ConvexError({ code: "INVALID_ARGUMENT" })`
@@ -43,60 +28,43 @@ All notable changes to this project are documented here. The format is based on
   Switch at a period boundary, or add both rollups together when billing or enforcing a limit for
   that period: the old and new rollups are separate rows, `recordWithLimit` checks only the new one,
   and `usage` and `closePeriod` see only one.
+- **Breaking:** `record` and `adjust` throw `QUANTITY_OVERFLOW` when a `sum` rollup would overflow
+  to `Infinity` and leave the rollup unchanged; 0.1.0 stored `Infinity`, which no correction could
+  undo. Check the input for a unit or loop bug.
 - **Breaking:** `engines.node` is now `>=20` (was `>=18`), the minimum the lowest supported `convex`
-  peer (1.45.0) declares.
-- README "Testing" and `docs/API.md` (`register`) now give the test tooling install command
-  (`pnpm add -D convex-test vitest vite @edge-runtime/vm`) and the Vitest `edge-runtime` config;
-  "Compatibility" notes that `convex-test` 0.0.72+ needs `convex@^1.46.0`, so hosts on convex 1.45.x
-  use `convex-test@0.0.71` or older.
-- Rewrite the README for coding agents (fixed section order, a Quick start in the first 40 lines,
-  an export table, an errors table with every thrown code and message, a limits list), rewrite
-  `docs/API.md` with one heading per export, refresh `llms.txt`, and add TSDoc to every public
-  export. The README test example now uses `import.meta.glob("./**/*.*s")`, so the module map
-  includes the `.js` files Convex codegen writes, and examples use `.js`-suffixed relative imports
-  so they compile under `moduleResolution: nodenext`. `pnpm check:docs` (`scripts/check-docs.mjs`, run
-  in CI after `pnpm build`) enforces these docs and type-checks their examples against `dist/`. The
-  `description` and `keywords` now describe usage metering, limits, period close and corrections.
-  `pnpm typecheck:ci` also type-checks the React hook tests.
-- Fewer billed calls and writes: `reset` and `eraseSubject` schedule a follow-up pass only when a
-  batch was full; `defineMeter` skips the write when nothing changed; `recordWithLimit` reads the
-  idempotency ledger once.
-- Clarify installation, usage, and idempotency documentation; retain `llms.txt` as the single
-  maintained LLM index and remove the generated `llms-full.txt` bundle. Document the `/test` entry
-  and the full error-code table.
-- Releases run only from CI: canary from `main`, `@latest` from a `vX.Y.Z` tag, with npm trusted
-  publishing and provenance. pnpm 10 with a release-age gate; deepmerge-ts override pinned to 8.0.2.
-- The npm package now ships `docs/API.md`, `CHANGELOG.md` and `llms.txt`, so the docs under
-  `node_modules/@vllnt/convex-metering/` match the installed version. `llms.txt` links shipped files
-  relatively; `docs/API.md` documents every entry point, the React hooks and the `/test` helper, and
-  lists `key` and `actorRef` under `INVALID_ARGUMENT`; `reset` and `eraseSubject` are documented to
-  delete closed periods, and the `verify`/`adjust` code comments no longer overstate what a positive
-  `recordsRemaining` proves. `pnpm lint` fails when a required file is missing from the tarball or a
-  shipped doc links outside it. `homepage` points to https://oss.vllnt.com/packages/convex-metering.
-- Every push to `main` publishes a `canary`; a repository variable no longer gates it. Canaries
-  never move `latest`.
-- Develop and test against `convex` 1.51 and `convex-test` 0.0.73, and move the development
-  toolchain to ESLint 10, jsdom 31, `@vllnt/typescript` 3 and Vitest 5.1.1 (dev-only); pin the
-  `minimatch` (11.0.9) and `handlebars` (4.7.10) dev overrides. The `convex` peer range (`^1.45.0`)
-  is unchanged. Under `@vllnt/typescript` 3 (`exactOptionalPropertyTypes`), the client and
-  component omit an unset `idempotencyKey` or `actorRef` instead of passing `undefined`; stored data
-  is unchanged.
-  `typecheck:ci` also type-checks the example host app.
-- `pnpm test:package` installs the packed tarball in a temp consumer, imports every runtime entry
-  point and type-checks a strict `nodenext` consumer of every entry point (including `register(t)`
-  against a host schema); CI and the publish `quality` job, which both `canary` and `release` need,
-  run it.
-- `pnpm test` and `pnpm test:coverage` first run `pnpm typecheck:tests`, which type-checks every test
-  file in `src/` and `example/` (`tsconfig.test.json` fixed).
-- The tarball check also rejects `*.spec.mts` and `*.spec.cts` files, and its harness runs in CI.
-- The pnpm release-age gate (7 days, `@vllnt/*` excluded) moved to `pnpm-workspace.yaml`, where pnpm
-  10 enforces it; under `package.json` `pnpm` it was ignored.
-- Internal: CI and publish set up pnpm through Corepack (`packageManager`), and the package test
-  pins its consumer to the same pnpm; every action in `ci.yml` and `publish.yml` is GitHub's own and
-  pinned to a commit, and the privacy guard's `checkout` and `setup-node` are pinned too; every push
-  to `main` publishes a canary; CI on `main` is never cancelled; there is no update bot, dependency
-  updates are a manual pass under the 7-day rule; a test pins the `recordWithLimit` boundary (a
-  rollup that lands exactly on the limit records).
+  peer (1.45.0) declares; use Node.js 20 or newer. The `convex` peer range (`^1.45.0`) is unchanged.
+- `reset` deletes the rollup in the pass that finds fewer than `batch` records (0.1.0 deleted it
+  only in a pass that found none, so it always scheduled one more pass), and `reset` and
+  `eraseSubject` schedule a follow-up pass only after a full batch. `defineMeter` skips the write
+  when nothing changed, and `recordWithLimit` reads the idempotency ledger once.
+- The npm package ships `docs/API.md`, `CHANGELOG.md` and `llms.txt`, so the docs under
+  `node_modules/@vllnt/convex-metering/` match the installed version, and no longer ships test files
+  under `src/`.
+- Rewritten docs: the README has a quick start, an export table, every error code and message with
+  its fix, a limits list (including the order of list results and the Convex conflict error on one
+  very busy rollup) and the test tooling setup (`convex-test` 0.0.72+ needs `convex@^1.46.0`);
+  `docs/API.md` has one heading per export and every entry point, including the `.js` aliases;
+  `llms.txt` is refreshed, and every public export has TSDoc. `homepage` is
+  https://oss.vllnt.com/packages/convex-metering, and the `description` and `keywords` describe
+  usage metering, limits, period close and corrections.
+- Releases are published only from CI with npm provenance: every push to `main` publishes a
+  `canary` build, which never moves `latest`, and `latest` comes from a `vX.Y.Z` tag.
+- Internal: CI, tooling and tests (pnpm 10 with a 7-day release-age gate, pinned actions,
+  development on `convex` 1.51 and Vitest 5, a docs check, a test of the packed tarball, and a
+  behaviour and failure test for every public function).
+
+### Fixed
+
+- `closePeriod` on an already-closed period is a no-op that keeps the original freeze time instead
+  of rewriting it.
+- `useUsage` clamps `fraction` to its documented `0..1` range when usage is over the limit.
+- `@vllnt/convex-metering/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
+  relative imports, Vite client types referenced).
+- Client and React hook option types accept an explicit `undefined` for optional fields
+  (`period?: string | undefined`, …), so hosts using `exactOptionalPropertyTypes` can pass optional
+  args straight through.
+- `register()` from `/test` accepts a host app's `convexTest(hostSchema, modules)` instance. It was
+  typed against the component's own schema, so any host schema with other tables failed with TS2345.
 
 ## [0.1.0] - 2026-09-01
 

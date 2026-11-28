@@ -16,6 +16,8 @@ version.
 | `@vllnt/convex-metering/react` | [`useUsage`](#useusage), [`useUsageList`](#useusagelist) and the type [`UsageView`](#usageview). |
 | `@vllnt/convex-metering/test` | [`register`](#register), to mount the component in a `convex-test` instance. |
 | `@vllnt/convex-metering/_generated/component` | The [`ComponentApi`](#componentapi) type (types only). |
+| `@vllnt/convex-metering/convex.config.js`, `@vllnt/convex-metering/_generated/component.js` | Aliases of the two entries above with a `.js` suffix, for imports that spell it out. |
+| `@vllnt/convex-metering/package.json` | The package manifest, for tools that read the installed version. |
 
 ## Client
 
@@ -226,7 +228,9 @@ The meter definition, or `null`.
 
 `listMeters(ctx, scope?) → Promise<MeterDefinition[]>` (query)
 
-Every meter in one scope (default: the client `defaultScope`). Not paginated.
+Every meter in one scope (default: the client `defaultScope`), in the order
+they were first defined, oldest first; re-defining a meter keeps its place. Not
+paginated.
 
 ### `usage`
 
@@ -249,7 +253,10 @@ subject, ordered by `period` string. Not paginated.
 `listSubjectUsage(ctx, subjectRef, scope?) → Promise<SubjectUsageEntry[]>` (query)
 
 One `{ meter, period, value, count, closed }` entry per meter and period for a
-subject in one scope. Not paginated.
+subject in one scope, in the order the rollups were created, oldest first. It is
+not sorted by meter or period: sort in the host if you need that. A period
+cleared by `reset` and recorded again gets a new rollup and moves to the end.
+Not paginated.
 
 ### `verify`
 
