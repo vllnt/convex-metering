@@ -356,6 +356,26 @@ describe("metering — recordWithLimit (atomic enforcement)", () => {
     ).toMatchObject({ recorded: true, value: 5 });
   });
 
+  test("records a value that lands exactly on the limit and refuses one unit more", async () => {
+    const t = setup();
+    await t.mutation(api.example.defineMeter, { key: "api", aggregation: "sum" });
+    const call = { meter: "api", subjectRef: "o", limit: 10, period: "p" };
+    await t.mutation(api.example.recordWithLimit, { ...call, quantity: 4 });
+    // 4 + 6 = 10 is not over the limit (`<= limit`) → recorded
+    expect(await t.mutation(api.example.recordWithLimit, { ...call, quantity: 6 })).toEqual({
+      recorded: true,
+      value: 10,
+      count: 2,
+    });
+    // 10 + 1 = 11 is over it → refused, value unchanged
+    expect(await t.mutation(api.example.recordWithLimit, { ...call, quantity: 1 })).toEqual({
+      recorded: false,
+      reason: "limit_exceeded",
+      value: 10,
+      limit: 10,
+    });
+  });
+
   test("a duplicate stays a duplicate even when the current projection exceeds its limit", async () => {
     const t = setup();
     await t.mutation(api.example.defineMeter, { key: "api", aggregation: "sum" });

@@ -37,6 +37,12 @@ at least one adversarial test (invalid input, not-found, boundary).
 - Explicit return types on public APIs
 - Mutations in `mutations.ts`, queries in `queries.ts`, validators in `validators.ts`
 
+## Dependencies
+
+Dependency updates are a manual pass; there is no update bot. pnpm's `minimumReleaseAge` in
+`pnpm-workspace.yaml` holds every new version back for 7 days, except `@vllnt/*`. GitHub's own
+security alerts and security updates stay on.
+
 ## Pull Requests
 
 - Target `main`
@@ -51,9 +57,9 @@ at least one adversarial test (invalid input, not-found, boundary).
 Maintainers only. Every publish runs in `.github/workflows/publish.yml` with npm trusted
 publishing and provenance; nothing is published from a local machine.
 
-- Canary (`@canary`): every push to `main` that changes the package or its shipped docs
-  publishes one under the `canary` dist-tag (never `latest`); a manual run on `main` also
-  publishes one.
+- Canary (`@canary`): every push to `main` publishes one under the `canary` dist-tag (never
+  `latest`), so the newest canary is always built from the head of `main`; a manual run on
+  `main` also publishes one.
 - Stable (`@latest`): merge a PR that sets `package.json` `version` and adds a matching
   `## [X.Y.Z]` entry to `CHANGELOG.md`, then push the tag `vX.Y.Z` on that `main` commit.
 
