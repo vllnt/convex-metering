@@ -222,8 +222,8 @@ export class Metering {
       subjectRef,
       quantity,
       period: this.periodOf(opts.period),
-      idempotencyKey: opts.idempotencyKey,
-      actorRef: opts.actorRef,
+      ...(opts.idempotencyKey === undefined ? {} : { idempotencyKey: opts.idempotencyKey }),
+      ...(opts.actorRef === undefined ? {} : { actorRef: opts.actorRef }),
     });
   }
 
@@ -247,8 +247,8 @@ export class Metering {
       quantity,
       limit,
       period: this.periodOf(opts.period),
-      idempotencyKey: opts.idempotencyKey,
-      actorRef: opts.actorRef,
+      ...(opts.idempotencyKey === undefined ? {} : { idempotencyKey: opts.idempotencyKey }),
+      ...(opts.actorRef === undefined ? {} : { actorRef: opts.actorRef }),
     });
   }
 
@@ -270,8 +270,8 @@ export class Metering {
       subjectRef,
       delta,
       period: this.periodOf(opts.period),
-      idempotencyKey: opts.idempotencyKey,
-      actorRef: opts.actorRef,
+      ...(opts.idempotencyKey === undefined ? {} : { idempotencyKey: opts.idempotencyKey }),
+      ...(opts.actorRef === undefined ? {} : { actorRef: opts.actorRef }),
     });
   }
 

@@ -118,6 +118,7 @@ export const recordWithLimit = mutation({
     limit: v.number(),
     period: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
+    actorRef: v.optional(v.string()),
     scope: v.optional(v.string()),
   },
   returns: limitResult,
@@ -125,6 +126,7 @@ export const recordWithLimit = mutation({
     metering.recordWithLimit(ctx, a.meter, a.subjectRef, a.quantity, a.limit, {
       period: a.period,
       idempotencyKey: a.idempotencyKey,
+      actorRef: a.actorRef,
       scope: a.scope,
     }),
 });
@@ -136,6 +138,7 @@ export const adjust = mutation({
     delta: v.number(),
     period: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
+    actorRef: v.optional(v.string()),
     scope: v.optional(v.string()),
   },
   returns: recordResult,
@@ -143,6 +146,7 @@ export const adjust = mutation({
     metering.adjust(ctx, a.meter, a.subjectRef, a.delta, {
       period: a.period,
       idempotencyKey: a.idempotencyKey,
+      actorRef: a.actorRef,
       scope: a.scope,
     }),
 });

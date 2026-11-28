@@ -245,8 +245,8 @@ export const record = mutation({
       subjectRef: args.subjectRef,
       quantity: args.quantity,
       period: args.period,
-      idempotencyKey: args.idempotencyKey,
-      actorRef: args.actorRef,
+      ...(args.idempotencyKey === undefined ? {} : { idempotencyKey: args.idempotencyKey }),
+      ...(args.actorRef === undefined ? {} : { actorRef: args.actorRef }),
       recordedAt: now,
     });
     if (rollup === null) {
@@ -338,8 +338,8 @@ export const recordWithLimit = mutation({
       subjectRef: args.subjectRef,
       quantity: args.quantity,
       period: args.period,
-      idempotencyKey: args.idempotencyKey,
-      actorRef: args.actorRef,
+      ...(args.idempotencyKey === undefined ? {} : { idempotencyKey: args.idempotencyKey }),
+      ...(args.actorRef === undefined ? {} : { actorRef: args.actorRef }),
       recordedAt: now,
     });
     if (rollup === null) {
@@ -419,8 +419,8 @@ export const adjust = mutation({
       subjectRef: args.subjectRef,
       quantity: args.delta,
       period: args.period,
-      idempotencyKey: args.idempotencyKey,
-      actorRef: args.actorRef,
+      ...(args.idempotencyKey === undefined ? {} : { idempotencyKey: args.idempotencyKey }),
+      ...(args.actorRef === undefined ? {} : { actorRef: args.actorRef }),
       recordedAt: now,
     });
     if (rollup === null) {

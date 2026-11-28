@@ -38,6 +38,11 @@ All notable changes to this project are documented here. The format is based on
   shipped doc links outside it. `homepage` points to https://oss.vllnt.com/packages/convex-metering.
 - Every push to `main` that changes the package or its shipped docs publishes a `canary`; a
   repository variable no longer gates it. Canaries never move `latest`.
+- Develop and test against `convex` 1.51 and `convex-test` 0.0.73, and move the development
+  toolchain to ESLint 10, jsdom 31, `@vllnt/typescript` 3 and Vitest 5.1.1 (dev-only). The `convex`
+  peer range (`^1.45.0`) is unchanged. Under `@vllnt/typescript` 3 (`exactOptionalPropertyTypes`),
+  the client and component omit an unset `idempotencyKey` or `actorRef` instead of passing
+  `undefined`; stored data and the published entry-point types are unchanged.
 
 ## [0.1.0] - 2026-09-01
 

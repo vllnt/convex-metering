@@ -292,6 +292,7 @@ describe("metering — adjust (signed corrections, sum-only)", () => {
         delta: -2,
         period: "p",
         idempotencyKey: "refund_1",
+        actorRef: "support-agent",
       }),
     ).toEqual({ recorded: true, value: 3, count: 2 });
     expect(
@@ -319,6 +320,7 @@ describe("metering — recordWithLimit (atomic enforcement)", () => {
         limit: 10,
         period: "p",
         idempotencyKey: "a",
+        actorRef: "worker-7",
       }),
     ).toEqual({ recorded: true, value: 3, count: 1 });
     // duplicate key, still under the limit (3+3=6 ≤ 10) → duplicate
