@@ -228,8 +228,9 @@ delivery.
 ### Testing your app
 
 `@vllnt/convex-metering/test` exports `register(t, name = "metering")` to mount
-the component in a `convex-test` instance. It needs `convex-test` and `vitest`
-(with Vite's `import.meta.glob`) in the consuming app:
+the component in your app's own `convexTest(schema, modules)` instance, whatever
+its tables. It needs `convex-test` and `vitest` (with Vite's `import.meta.glob`)
+in the consuming app:
 
 ```ts
 /// <reference types="vite/client" />

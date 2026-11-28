@@ -84,3 +84,26 @@ describe("useUsageList", () => {
     expect(result.current).toBe(data);
   });
 });
+
+describe("optional args accept an explicit undefined (exactOptionalPropertyTypes)", () => {
+  // Typed as possibly-undefined on purpose: `pnpm typecheck` fails if a hook's
+  // `scope` / `limit` is narrowed back to `?: T`.
+  const scope: string | undefined = undefined as string | undefined;
+  const limit: number | undefined = undefined as number | undefined;
+
+  test("useUsage takes scope: string | undefined and { limit: number | undefined }", () => {
+    useQueryMock.mockReturnValue({ value: 1, count: 1, closed: false });
+    const usageArgs = { scope, meter: "api", subjectRef: "o", period: "p" };
+    const { result } = renderHook(() => useUsage(usageRef, usageArgs, { limit }));
+    expect(useQueryMock).toHaveBeenCalledWith(usageRef, usageArgs);
+    expect(result.current).toEqual({ isLoading: false, value: 1, count: 1, closed: false });
+  });
+
+  test("useUsageList takes scope: string | undefined", () => {
+    useQueryMock.mockReturnValue([]);
+    const listArgs = { scope, meter: "api", subjectRef: "o" };
+    const { result } = renderHook(() => useUsageList(listRef, listArgs));
+    expect(useQueryMock).toHaveBeenCalledWith(listRef, listArgs);
+    expect(result.current).toEqual([]);
+  });
+});

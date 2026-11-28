@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] - Unreleased
+## [0.2.0] - Unreleased
 
 ### Fixed
 
@@ -12,15 +12,19 @@ All notable changes to this project are documented here. The format is based on
   of rewriting it.
 - Reject a `sum` rollup that would overflow to `Infinity` (`QUANTITY_OVERFLOW`) in `record` and
   `adjust`; previously the rollup silently became `Infinity` and could not be corrected.
-- Reject empty-string `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` and `actorRef` on
-  `defineMeter`, `record`, `recordWithLimit` and `adjust` (`INVALID_ARGUMENT`) instead of silently
-  bucketing usage under an empty key.
+- **Breaking:** Reject empty-string identifiers (`scope` and `key` on `defineMeter`; `scope`, `meter`,
+  `subjectRef`, `period`, `idempotencyKey` and `actorRef` on `record`, `recordWithLimit` and `adjust`)
+  with `ConvexError({ code: "INVALID_ARGUMENT" })` instead of silently bucketing usage under an empty
+  key. Callers passing an empty string, which 0.1.0 accepted, now get a `ConvexError` instead of
+  success.
 - `useUsage` clamps `fraction` to its documented `0..1` range when usage is over the limit.
 - `@vllnt/convex-metering/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
   relative imports, Vite client types referenced).
 - Client and React hook option types accept an explicit `undefined` for optional fields
   (`period?: string | undefined`, …), so hosts using `exactOptionalPropertyTypes` can pass optional
   args straight through.
+- `register()` from `/test` accepts a host app's `convexTest(hostSchema, modules)` instance. It was
+  typed against the component's own schema, so any host schema with other tables failed with TS2345.
 
 ### Changed
 
@@ -42,10 +46,11 @@ All notable changes to this project are documented here. The format is based on
 - Every push to `main` that changes the package or its shipped docs publishes a `canary`; a
   repository variable no longer gates it. Canaries never move `latest`.
 - Develop and test against `convex` 1.51 and `convex-test` 0.0.73, and move the development
-  toolchain to ESLint 10, jsdom 31, `@vllnt/typescript` 3 and Vitest 5.1.1 (dev-only); bump the
-  `minimatch` override from 11.0.5 to 11.0.9. The `convex` peer range (`^1.45.0`) is unchanged. Under
-  `@vllnt/typescript` 3 (`exactOptionalPropertyTypes`), the client and component omit an unset
-  `idempotencyKey` or `actorRef` instead of passing `undefined`; stored data is unchanged.
+  toolchain to ESLint 10, jsdom 31, `@vllnt/typescript` 3 and Vitest 5.1.1 (dev-only); pin the
+  `minimatch` (11.0.9) and `handlebars` (4.7.10) dev overrides. The `convex` peer range (`^1.45.0`)
+  is unchanged. Under `@vllnt/typescript` 3 (`exactOptionalPropertyTypes`), the client and
+  component omit an unset `idempotencyKey` or `actorRef` instead of passing `undefined`; stored data
+  is unchanged.
   `typecheck:ci` also type-checks the example host app.
 
 ## [0.1.0] - 2026-09-01
