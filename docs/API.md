@@ -1,7 +1,8 @@
 # API Reference — @vllnt/convex-metering
 
-**Compatibility:** `convex@^1.45.0`; Node.js `>=18` (`engines.node`; the
-installed `convex` may need newer: 1.45 needs `>=20`, 1.51 needs `>=22`); React
+**Compatibility:** `convex@^1.45.0`; Node.js `>=20` (`engines.node`, the
+minimum of `convex` 1.45; the installed `convex` may need newer: 1.51 needs
+`>=22`); React
 `>=18` is optional. This file ships in the npm package at
 `node_modules/@vllnt/convex-metering/docs/API.md` and matches the installed
 version.
@@ -70,6 +71,14 @@ A repeated key returns `{ recorded: false, reason: "duplicate" }` and changes
 nothing. Keys survive `reset`, `eraseSubject` and `pruneRecords`; only
 `pruneSeen` removes them. Keys are accepted only on `sum` meters.
 
+**String length cap.** `defineMeter`, `record`, `recordWithLimit` and `adjust`
+reject a string argument longer than 256 UTF-16 code units (JavaScript
+`.length`; an emoji outside the Basic Multilingual Plane counts as 2) with
+`INVALID_ARGUMENT`. Queries and `closePeriod`, `reset`, `eraseSubject`,
+`pruneRecords` and `pruneSeen` are not capped, so a row an older version stored
+with a longer value stays readable and erasable, but recording, adjusting or
+redefining (`defineMeter`) it throws.
+
 ### `defineMeter`
 
 `defineMeter(ctx, key, opts?) → Promise<{ created: boolean }>` (mutation)
@@ -84,7 +93,8 @@ at any time. `aggregation` may change only while the meter has no rollup in
 that scope. Returns `{ created: true }` on insert, `{ created: false }` on
 update.
 
-**Throws** `INVALID_ARGUMENT` (empty `scope` or `key`), `AGGREGATION_LOCKED`.
+**Throws** `INVALID_ARGUMENT` (empty `scope` or `key`, or a `scope`, `key` or
+`unit` longer than 256 UTF-16 code units), `AGGREGATION_LOCKED`.
 
 ### `record`
 
@@ -100,12 +110,12 @@ keeps the latest; the first record sets the value). Returns
 `{ recorded: false, reason: "duplicate" }` for a repeated `idempotencyKey`.
 `actorRef` is stored on the record.
 
-Checks run in this order: `quantity`, empty strings, meter exists, key on a
+Checks run in this order: `quantity`, empty or over-long strings, meter exists, key on a
 non-`sum` meter, period closed, duplicate key, overflow.
 
 **Throws** `INVALID_QUANTITY` (negative or non-finite), `INVALID_ARGUMENT`
-(empty `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or
-`actorRef`), `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`, `PERIOD_CLOSED`,
+(`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or `actorRef`
+empty or longer than 256 UTF-16 code units), `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`, `PERIOD_CLOSED`,
 `QUANTITY_OVERFLOW`.
 
 ### `recordWithLimit`
@@ -122,7 +132,7 @@ unchanged `value`. A repeated key returns `duplicate` before the limit is
 checked. `limit_exceeded` writes nothing, including the key.
 
 **Throws** `INVALID_QUANTITY`, `INVALID_LIMIT` (negative or non-finite
-`limit`), `INVALID_ARGUMENT`, `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`,
+`limit`), `INVALID_ARGUMENT` (as `record`), `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`,
 `PERIOD_CLOSED`.
 
 ### `adjust`
@@ -137,8 +147,8 @@ and add it to the rollup, which may not go below zero. The rollup's `count`
 goes up by 1. A period with no usage gets a new rollup. Returns the same shape
 as `record`.
 
-**Throws** `INVALID_QUANTITY` (non-finite `delta`), `INVALID_ARGUMENT`,
-`METER_NOT_FOUND`, `ADJUST_REQUIRES_SUM`, `PERIOD_CLOSED`, `QUANTITY_OVERFLOW`,
+**Throws** `INVALID_QUANTITY` (non-finite `delta`), `INVALID_ARGUMENT` (as
+`record`), `METER_NOT_FOUND`, `ADJUST_REQUIRES_SUM`, `PERIOD_CLOSED`, `QUANTITY_OVERFLOW`,
 `ADJUST_BELOW_ZERO`.
 
 ### `closePeriod`
@@ -384,7 +394,7 @@ Thrown as `ConvexError` with `data: { code, message }`; branch on
 
 | Code | Thrown by | When |
 | --- | --- | --- |
-| `INVALID_ARGUMENT` | `defineMeter`, `record`, `recordWithLimit`, `adjust` | A string argument is empty: `scope` or `key` (`defineMeter`); `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or `actorRef` (the others). |
+| `INVALID_ARGUMENT` | `defineMeter`, `record`, `recordWithLimit`, `adjust` | A string argument is empty, or longer than 256 UTF-16 code units: `scope` or `key` (`defineMeter`, which also caps `unit`); `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or `actorRef` (the others). |
 | `INVALID_QUANTITY` | `record`, `recordWithLimit`, `adjust` | `quantity` is negative or non-finite, or `delta` is non-finite. |
 | `INVALID_LIMIT` | `recordWithLimit` | `limit` is negative or non-finite. |
 | `METER_NOT_FOUND` | `record`, `recordWithLimit`, `adjust`, `verify` | No meter `(scope, meter)`. |

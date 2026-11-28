@@ -3,8 +3,8 @@
 > Usage metering as a Convex component: idempotent usage events rolled up per billing period, with atomic limits, period close and signed corrections.
 
 Install `@vllnt/convex-metering` (unreleased builds from `main` use the `canary` dist-tag). Peer
-dependency `convex@^1.45.0`; optional peer `react >=18` for the `./react` hooks; Node.js `>=18`
-(`engines.node`; `convex` 1.45 needs `>=20`, 1.51 needs `>=22`). ES modules only. Mount it with
+dependency `convex@^1.45.0`; optional peer `react >=18` for the `./react` hooks; Node.js `>=20`
+(`engines.node`; `convex` 1.51 needs `>=22`). ES modules only. Mount it with
 `app.use(metering)` from `@vllnt/convex-metering/convex.config` and call it through
 `new Metering(components.metering)` from host mutations and queries. Mutations: `defineMeter`,
 `record`, `recordWithLimit`, `adjust`, `closePeriod`, `reset`, `eraseSubject`, `pruneRecords`,
@@ -21,7 +21,11 @@ check). `verify` re-folds the surviving records and compares values only. Client
 `defaultScope: "global"`, `defaultPeriod: "all"`; meter defaults `aggregation: "sum"`, `unit: ""`.
 Cleanup batches default to 200, integer 1..500 (`INVALID_BATCH`); they return the first pass's count
 and reschedule while full. `pruneRecords` and `pruneSeen` span every scope. List queries and
-`verify` are not paginated. Errors are `ConvexError` with `data.code`. The host owns auth,
+`verify` are not paginated. Errors are `ConvexError` with `data.code`. `defineMeter`, `record`,
+`recordWithLimit` and `adjust` reject an empty string argument or one longer than 256 UTF-16 code
+units (`INVALID_ARGUMENT`); queries and `closePeriod`, `reset`, `eraseSubject`, `pruneRecords`,
+`pruneSeen` are not capped, so older longer rows stay readable and erasable, but recording,
+adjusting or redefining (`defineMeter`) them throws. The host owns auth,
 `subjectRef`, `period`, pricing and retention; scopes are not authorization.
 
 ## When to use

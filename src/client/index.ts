@@ -200,7 +200,9 @@ export class Metering {
    * Create or update a meter. `aggregation` defaults to `"sum"`, `unit` to `""`; an
    * update writes both, so omitting them on a re-define sends the defaults.
    * `unit` may change freely; `aggregation` is locked once usage exists (throws
-   * `AGGREGATION_LOCKED`). Returns `{ created }`.
+   * `AGGREGATION_LOCKED`). Returns `{ created }`. Throws `INVALID_ARGUMENT` for an
+   * empty `scope` or `key`, or a `scope`, `key` or `unit` longer than 256 UTF-16 code
+   * units.
    */
   defineMeter(
     ctx: RunMutationCtx,
@@ -218,7 +220,9 @@ export class Metering {
   /**
    * Record `quantity` of usage. Pass an `idempotencyKey` (sum meters only) to make
    * a retry a no-op — the dedup survives `pruneRecords`. Returns the new rollup or
-   * `{ recorded: false, reason: "duplicate" }`.
+   * `{ recorded: false, reason: "duplicate" }`. Throws `INVALID_ARGUMENT` for an
+   * empty string argument or one longer than 256 UTF-16 code units (`meter`,
+   * `subjectRef` and every string option).
    */
   record(
     ctx: RunMutationCtx,
@@ -241,7 +245,8 @@ export class Metering {
   /**
    * Record only if it would not push the period over `limit` — an atomic
    * check-and-record (no read-then-write race). Returns the rollup, `duplicate`, or
-   * `{ recorded: false, reason: "limit_exceeded", value, limit }`.
+   * `{ recorded: false, reason: "limit_exceeded", value, limit }`. String arguments
+   * follow the same 256 UTF-16 code unit cap as `record` (`INVALID_ARGUMENT`).
    */
   recordWithLimit(
     ctx: RunMutationCtx,
@@ -267,6 +272,8 @@ export class Metering {
    * Post a signed correction to a **sum** meter (`delta` may be negative — a
    * refund/credit/void). Appends a reversing record; the rollup never goes
    * negative (`ADJUST_BELOW_ZERO` otherwise). Idempotent via `idempotencyKey`.
+   * String arguments follow the same 256 UTF-16 code unit cap as `record`
+   * (`INVALID_ARGUMENT`).
    */
   adjust(
     ctx: RunMutationCtx,

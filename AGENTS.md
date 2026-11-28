@@ -123,6 +123,13 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
   surviving records and flags drift (`consistent` compares values only and is complete only with the
   full record history; `recordsRemaining > 0` alone does not rule out partial pruning).
 
+- **Write-side 256 cap, reads and erasure uncapped:** `defineMeter`, `record`, `recordWithLimit`
+  and `adjust` reject a string argument longer than 256 UTF-16 code units (`.length`,
+  `INVALID_ARGUMENT`), bounding row and index-key size. Queries and `closePeriod`/`reset`/
+  `eraseSubject`/prune are deliberately uncapped so a host can still read and erase (GDPR) rows an
+  older version stored with longer values; recording, adjusting or redefining (`defineMeter`) them
+  throws.
+
 - **`period` is a host-supplied opaque string:** the component never parses dates — locale/calendar-agnostic.
 
 - **Lifecycle is bounded + self-rescheduling:** `reset` (one meter/period) and `eraseSubject` (GDPR,
