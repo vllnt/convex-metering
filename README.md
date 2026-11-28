@@ -234,9 +234,11 @@ export const invoiceLines = internalQuery({
 ```
 
 `ingestEgress` returns `false` for a redelivered `eventId`. Idempotency keys
-share one namespace per `(scope, meter)`, so the prefixes keep event and refund
-IDs apart. Post refunds before `closeMonth`: `adjust` into a closed period
-throws `PERIOD_CLOSED`.
+are scoped to `(scope, meter)`, not to subject or period, so a key must be
+unique across every subject and period of its meter. Prefix keys by source
+(`egress:`, `refund:`) so that two sources writing keys to the same meter cannot
+collide. Post refunds before `closeMonth`: `adjust` into a closed period throws
+`PERIOD_CLOSED`.
 
 Prune old audit rows, erase a user, and check a rollup against its records:
 
@@ -412,11 +414,15 @@ the limit returns `{ recorded: false, reason: "limit_exceeded", value, limit }`.
   `delta` on a period with no usage creates its rollup.
 - These return without error and change nothing: `closePeriod` on a period
   with no usage (`false`) or an already-closed one (`true`, freeze time kept);
-  `reset` and `eraseSubject` for an unknown subject (`0`); `usage`, `getMeter`,
-  `listUsage` and `listSubjectUsage` for an unknown meter (`null` or `[]`).
+  `reset` and `eraseSubject` for an unknown subject (`0`); `usage`, `getMeter`
+  and `listUsage` for an unknown meter (`null` or `[]`); `listSubjectUsage` for
+  a subject with no usage (`[]`).
 - Only `defineMeter`, `record`, `recordWithLimit` and `adjust` reject empty
-  strings. `closePeriod`, `reset`, `eraseSubject` and the queries accept them
-  and find nothing.
+  strings. The other functions treat `""` as an ordinary lookup value:
+  `closePeriod`, `reset`, `eraseSubject`, `getMeter`, `listMeters`, `usage`,
+  `listUsage` and `listSubjectUsage` match only rows stored with that empty
+  string (0.2.0 never writes them; 0.1.0 accepted them), and `verify` throws
+  `METER_NOT_FOUND` unless such a meter exists.
 - `reset` and `eraseSubject` also delete closed periods. `eraseSubject` works in
   one scope and does not touch `seen` keys.
 - `pruneRecords` and `pruneSeen` take no scope: they delete across every scope
@@ -455,6 +461,19 @@ environment (`@edge-runtime/vm`). Use the glob `./**/*.*s` (the pattern
 writes to `convex/_generated/`. `./**/*.ts` finds that directory only through
 its `.d.ts` files; without them `convex-test` throws
 `Could not find the "_generated" directory`.
+
+The test imports your app's `convex/schema.ts`. The component's tables live in
+the component, not in this schema, so any schema works; a minimal one:
+
+```ts
+// convex/schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  notes: defineTable({ body: v.string() }),
+});
+```
 
 ```ts
 // convex/usage.test.ts

@@ -335,13 +335,14 @@ const examples = allBlocks.filter(
     (b.file === "README.md" || b.file === "docs/API.md") &&
     /^tsx?$/.test(b.lang),
 );
-for (const block of allBlocks.filter(
-  (b) =>
-    (b.file === "README.md" || b.file === "docs/API.md") &&
-    !/^tsx?$/.test(b.lang),
-)) {
-  if (/\.\.\.|…/.test(block.code))
-    fail(`${block.file}:${block.line} code block has a "..." gap`);
+// Blocks that are not type-checked examples, in all four docs: a TypeScript
+// block may spread (`...rest`), any other block may not contain "..." at all.
+for (const block of allBlocks.filter((b) => !examples.includes(b))) {
+  const gap = /^tsx?$/.test(block.lang)
+    ? /\.\.\.(?![\w$({[])/.test(block.code) ||
+      /(\/\/|\/\*).*(\.\.\.|…)/.test(block.code)
+    : /\.\.\.|…/.test(block.code);
+  if (gap) fail(`${block.file}:${block.line} code block has a "..." gap`);
 }
 for (const block of examples) {
   const where = `${block.file}:${block.line}`;

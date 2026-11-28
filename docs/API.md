@@ -46,10 +46,14 @@ Every method takes the host `ctx` as its first argument and returns a
 action context); query methods need a `ctx` with `runQuery` (a query, mutation
 or action context).
 
-**Optional fields accept `undefined`.** Every optional input field (`period?`,
-`scope?`, `actorRef?`, `batch?`, the React hook `scope?` and `limit?`) is typed
-`?: T | undefined`, so a host compiled with `exactOptionalPropertyTypes` can pass
-its own optional values through. An `undefined` field behaves as if omitted.
+**Optional inputs accept `undefined`.** Every optional field of an options
+object (`period?`, `idempotencyKey?`, `actorRef?`, `scope?`, `batch?`, and the
+React hook `scope?` and `limit?`) is typed `?: T | undefined`, so a host
+compiled with `exactOptionalPropertyTypes` can pass its own optional values
+through. Optional positional parameters (`batch?` of `pruneRecords` and
+`pruneSeen`; `scope?` of `getMeter`, `listMeters`, `listUsage` and
+`listSubjectUsage`) are typed `?: T` and also accept `undefined`. An `undefined`
+input behaves as if omitted.
 
 **Periods are host-owned.** A `period` is an opaque string (`"2026-06"`,
 `"2026-W24"`). The component never parses dates.
