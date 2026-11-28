@@ -45,7 +45,8 @@ scripts/
 │                           #   test-check-package-contents.sh runs in the CI lint job)
 ├── generate-llms.mjs      # `pnpm generate:llms`: llms.txt sanity asserts
 └── test-package.mjs       # `pnpm test:package`: installs the packed tarball in a temp consumer,
-                           #   imports every entry point and strict-type-checks it (CI + publish)
+                           #   imports every entry point and strict-type-checks it (CI and the
+                           #   publish `quality` job that `canary` and `release` need)
 ```
 
 Sandboxed tables, no host tables touched:
