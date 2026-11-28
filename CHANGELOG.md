@@ -51,7 +51,7 @@ All notable changes to this project are documented here. The format is based on
   `canary` build, which never moves `latest`, and `latest` comes from a `vX.Y.Z` tag.
 - Internal: CI, tooling and tests (pnpm 10 with a 7-day release-age gate, pinned actions,
   development on `convex` 1.51 and Vitest 5, a docs check, a test of the packed tarball, and a
-  behaviour and failure test for every public function).
+  behaviour test for every public function and a failure test where one applies).
 
 ### Fixed
 
@@ -65,6 +65,10 @@ All notable changes to this project are documented here. The format is based on
   args straight through.
 - `register()` from `/test` accepts a host app's `convexTest(hostSchema, modules)` instance. It was
   typed against the component's own schema, so any host schema with other tables failed with TS2345.
+- `verify` docs no longer overstate what it proves: `consistent` is complete only with the full
+  record history, and `recordsRemaining > 0` does not rule out partial pruning. The 0.1.0 docs and
+  TSDoc said to trust `consistent` only when `recordsRemaining > 0`, which implied that a positive
+  count was enough.
 
 ## [0.1.0] - 2026-09-01
 

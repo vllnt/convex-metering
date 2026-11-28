@@ -16,7 +16,7 @@ version.
 | `@vllnt/convex-metering/react` | [`useUsage`](#useusage), [`useUsageList`](#useusagelist) and the type [`UsageView`](#usageview). |
 | `@vllnt/convex-metering/test` | [`register`](#register), to mount the component in a `convex-test` instance. |
 | `@vllnt/convex-metering/_generated/component` | The [`ComponentApi`](#componentapi) type (types only). |
-| `@vllnt/convex-metering/convex.config.js`, `@vllnt/convex-metering/_generated/component.js` | Aliases of the two entries above with a `.js` suffix, for imports that spell it out. |
+| `@vllnt/convex-metering/convex.config.js`, `@vllnt/convex-metering/_generated/component.js` | Aliases of `./convex.config` and `./_generated/component` with a `.js` suffix, for imports that spell it out. |
 | `@vllnt/convex-metering/package.json` | The package manifest, for tools that read the installed version. |
 
 ## Client
