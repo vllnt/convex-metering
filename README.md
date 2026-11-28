@@ -1,8 +1,8 @@
 # @vllnt/convex-metering
 
-![Usage Metering — @vllnt/convex-metering](https://raw.githubusercontent.com/vllnt/convex-metering/main/.github/assets/thumbnail.png)
-
 Usage metering as a Convex component: idempotent usage events rolled up per billing period, with atomic limits, period close and signed corrections.
+
+![Usage Metering — @vllnt/convex-metering](https://raw.githubusercontent.com/vllnt/convex-metering/main/.github/assets/thumbnail.png)
 
 ## For coding agents
 
