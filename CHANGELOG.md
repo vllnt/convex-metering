@@ -65,6 +65,15 @@ All notable changes to this project are documented here. The format is based on
   component omit an unset `idempotencyKey` or `actorRef` instead of passing `undefined`; stored data
   is unchanged.
   `typecheck:ci` also type-checks the example host app.
+- `pnpm test:package` installs the packed tarball in a temp consumer, imports every runtime entry
+  point and type-checks a strict `nodenext` consumer of every entry point (including `register(t)`
+  against a host schema); CI and the publish `quality` job, which both `canary` and `release` need,
+  run it.
+- `pnpm test` and `pnpm test:coverage` first run `pnpm typecheck:tests`, which type-checks every test
+  file in `src/` and `example/` (`tsconfig.test.json` fixed).
+- The tarball check also rejects `*.spec.mts` and `*.spec.cts` files, and its harness runs in CI.
+- The pnpm release-age gate (7 days, `@vllnt/*` excluded) moved to `pnpm-workspace.yaml`, where pnpm
+  10 enforces it; under `package.json` `pnpm` it was ignored. Renovate waits 7 days too.
 
 ## [0.1.0] - 2026-09-01
 

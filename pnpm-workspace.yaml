@@ -1,0 +1,6 @@
+# Settings only (no packages list). pnpm 10 reads the release-age gate from this
+# file, not from the package.json "pnpm" field. scripts/test-package.mjs copies
+# it into the temp consumer, so its install is held to the same gate.
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - "@vllnt/*"

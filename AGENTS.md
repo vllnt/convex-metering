@@ -41,7 +41,12 @@ src/
 scripts/
 ├── check-docs.mjs         # `pnpm check:docs`: the README/llms.txt/docs/API.md/TSDoc contract (CI)
 ├── check-package-files.mjs # `pnpm check:package`: tarball contents + shipped links (run by lint)
-└── generate-llms.mjs      # `pnpm generate:llms`: llms.txt sanity asserts
+├── check-package-contents.sh # tarball allowlist/denylist gate before publish (its harness
+│                           #   test-check-package-contents.sh runs in the CI lint job)
+├── generate-llms.mjs      # `pnpm generate:llms`: llms.txt sanity asserts
+└── test-package.mjs       # `pnpm test:package`: installs the packed tarball in a temp consumer,
+                           #   imports every entry point and strict-type-checks it (CI and the
+                           #   publish `quality` job that `canary` and `release` need)
 ```
 
 Sandboxed tables, no host tables touched:
@@ -139,6 +144,10 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
   "Error codes", a README/`docs/API.md` example that no longer type-checks against `dist/`, or drift
   in the shared Links, footer or `llms.txt` Ecosystem blocks.
 - Runtime deps: only official `@convex-dev/*` + `@vllnt/*`.
+- The pnpm release-age gate (`minimumReleaseAge`, `minimumReleaseAgeExclude`) lives in
+  `pnpm-workspace.yaml`: pnpm 10 ignores it under `package.json` `pnpm`.
+- `pnpm test` and `pnpm test:coverage` run `pnpm typecheck:tests` (`tsconfig.test.json`, every test
+  file in `src/` and `example/`) first.
 
 ## Repository policy
 
