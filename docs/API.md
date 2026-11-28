@@ -50,7 +50,7 @@ accepts a caller one.
 ### `defineMeter(ctx, key, opts?) → { created }`
 
 `opts`:
-`{ aggregation?: "sum" | "max" | "last"; unit?: string; scope?: string }`
+`{ aggregation?: "sum" | "max" | "last" | undefined; unit?: string | undefined; scope?: string | undefined }`
 (defaults `sum`, `""`).
 
 Create or update a meter. `unit` may change freely. `aggregation` is **locked
@@ -215,6 +215,8 @@ returns `limit`, `remaining` (`max(0, limit - value)`), `fraction` (`0..1`;
 ## Testing
 
 `@vllnt/convex-metering/test` exports `register(t, name = "metering")`, which
-mounts the component in a `convex-test` instance. It ships as TypeScript source
+mounts the component in a `convex-test` instance. `t` is the host app's own
+`convexTest(hostSchema, modules)` instance, whatever its tables; pass `name` when
+the host mounts the component under another name. It ships as TypeScript source
 and needs `convex-test` and `vitest` (Vite's `import.meta.glob`) in the
 consuming app.
