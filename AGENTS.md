@@ -10,7 +10,8 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 
 # @vllnt/convex-metering
 
-Metered usage records — idempotent usage events rolled up per billing period, as a Convex component.
+Usage metering as a Convex component: idempotent usage events rolled up per billing period, with
+atomic limits, period close and signed corrections.
 It follows the vllnt Component Standard (see the `oss-packages` hub
 `AGENTS.md`).
 
@@ -37,6 +38,10 @@ src/
     │                       #   reset, eraseSubject, pruneRecords, pruneSeen
     ├── queries.ts          # getMeter, listMeters, usage, listUsage, listSubjectUsage, verify
     └── validators.ts       # shared validators (aggregation, recordResult, limitResult, …)
+scripts/
+├── check-docs.mjs         # `pnpm check:docs`: the README/llms.txt/docs/API.md/TSDoc contract (CI)
+├── check-package-files.mjs # `pnpm check:package`: tarball contents + shipped links (run by lint)
+└── generate-llms.mjs      # `pnpm generate:llms`: llms.txt sanity asserts
 ```
 
 Sandboxed tables, no host tables touched:
@@ -127,6 +132,12 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 - Explicit `args` + `returns` on every Convex function.
 - Concrete typed args throughout — no `v.any()` dumps (none is needed here).
 - 100% test coverage is BLOCKING (`vitest.config.mts` thresholds: statements, branches, functions, lines).
+- Docs are a checked contract: `pnpm build && pnpm check:docs` must pass. It fails on a missing or
+  reordered README section, an install line or first example below line 40, an untagged code block
+  or `...` gap, a broken relative link or anchor, a public export without TSDoc / README API row /
+  `docs/API.md` heading, a thrown error code missing from README "Errors and fixes" or `docs/API.md`
+  "Error codes", a README/`docs/API.md` example that no longer type-checks against `dist/`, or drift
+  in the shared Links, footer or `llms.txt` Ecosystem blocks.
 - Runtime deps: only official `@convex-dev/*` + `@vllnt/*`.
 
 ## Repository policy
@@ -140,13 +151,13 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
 
 | Changed | Update in the same commit |
 |---------|--------------------------|
-| Public API (defineMeter/record/recordWithLimit/adjust/closePeriod/reset/eraseSubject/prune*/getMeter/listMeters/usage/listUsage/listSubjectUsage/verify) | README API Reference table, `docs/API.md`, `llms.txt` context |
-| Config options / defaults (`defaultScope`, `defaultPeriod`, aggregation, batch) | README API Reference, `docs/API.md` constructor section |
-| Schema / tables / indexes | this file (Architecture), README Architecture, `docs/API.md` |
-| Error codes | `docs/API.md` → `## Error codes` table |
-| `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
+| Public API (defineMeter/record/recordWithLimit/adjust/closePeriod/reset/eraseSubject/prune*/getMeter/listMeters/usage/listUsage/listSubjectUsage/verify) | README `## API` table, `docs/API.md` heading per export, `llms.txt` context |
+| Config options / defaults (`defaultScope`, `defaultPeriod`, aggregation, batch) | README `## Limits and gotchas`, `docs/API.md` `Metering` section |
+| Schema / tables / indexes | this file (Architecture), `docs/API.md` |
+| Error codes and messages | README `## Errors and fixes`, `docs/API.md` → `## Error codes` table |
+| `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README `## Compatibility` |
 | Aggregation / idempotency / period / adjust / rollup semantics | `docs/API.md`, Key design decisions above |
-| Any change | `pnpm generate:llms` to validate the `llms.txt` index |
+| Any change | `pnpm generate:llms`, then `pnpm build && pnpm check:docs` |
 | Shipped docs (`README.md`, `CHANGELOG.md`, `llms.txt`, `docs/*.md`) | keep them in `package.json` `files` and in the `publish.yml` paths; `llms.txt` links shipped files as `./path` (`pnpm check:package`) |
 
 Grep old values before committing (e.g. `git grep "1.36.1"` → must be empty).

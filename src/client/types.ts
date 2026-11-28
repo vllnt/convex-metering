@@ -35,9 +35,13 @@ export interface RecordOptions {
 
 /** A meter definition, as returned by {@link Metering.getMeter} / {@link Metering.listMeters}. */
 export interface MeterDefinition {
+  /** The meter key passed to `defineMeter`. */
   key: string;
+  /** The scope the meter lives in. */
   scope: string;
+  /** The aggregation rule (`sum`, `max` or `last`). */
   aggregation: Aggregation;
+  /** The display unit label; `""` when none was given. */
   unit: string;
   /** Absolute ms timestamp the meter was first defined. */
   createdAt: number;
@@ -65,7 +69,10 @@ export type LimitOutcome =
 export interface Usage {
   /** The aggregated value for the period (sum, max, or last, per the meter). */
   value: number;
-  /** The number of usage events recorded in the period. */
+  /**
+   * The number of records written into the period (`record`, `recordWithLimit` and
+   * `adjust` each add one). `pruneRecords` does not lower it.
+   */
   count: number;
   /** True once the period has been closed (frozen) for billing. */
   closed: boolean;
@@ -73,25 +80,37 @@ export interface Usage {
 
 /** A subject's usage for one period, as returned in the {@link Metering.listUsage} array. */
 export interface UsageEntry {
+  /** The period bucket. */
   period: string;
+  /** The aggregated value for the period. */
   value: number;
+  /** The number of records written into the period. */
   count: number;
+  /** True once the period has been closed. */
   closed: boolean;
 }
 
 /** A subject's usage on one meter+period, as returned in {@link Metering.listSubjectUsage}. */
 export interface SubjectUsageEntry {
+  /** The meter key. */
   meter: string;
+  /** The period bucket. */
   period: string;
+  /** The aggregated value for the period. */
   value: number;
+  /** The number of records written into the period. */
   count: number;
+  /** True once the period has been closed. */
   closed: boolean;
 }
 
 /** Reconciliation result, as returned by {@link Metering.verify}. */
 export interface VerifyResult {
+  /** The stored rollup value; `0` when no rollup exists. */
   rollupValue: number;
+  /** The stored rollup count; `0` when no rollup exists. */
   rollupCount: number;
+  /** The value re-folded from the surviving records; `0` when none survive. */
   recomputedValue: number;
   /** Records still present; a positive count does not rule out partial pruning. */
   recordsRemaining: number;

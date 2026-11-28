@@ -7,4 +7,4 @@ assert.ok(index.startsWith("# @vllnt/convex-metering\n"));
 assert.ok(index.includes("[README](./README.md)"));
 assert.ok(index.includes("[API Reference](./docs/API.md)"));
 assert.ok(index.includes("`node_modules/@vllnt/convex-metering/docs/`"));
-assert.ok(index.includes("[vllnt oss](https://oss.vllnt.com/llms.txt)"));
+assert.ok(index.includes("[All @vllnt packages](https://oss.vllnt.com/llms.txt)"));

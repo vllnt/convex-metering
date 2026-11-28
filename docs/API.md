@@ -1,222 +1,388 @@
 # API Reference — @vllnt/convex-metering
 
-**Compatibility:** `convex@^1.45.0`; React >=18 is optional. This file ships in
-the npm package at `node_modules/@vllnt/convex-metering/docs/API.md` and matches
-the installed version.
+**Compatibility:** `convex@^1.45.0`; Node.js `>=18` (`engines.node`; the
+installed `convex` may need newer: 1.45 needs `>=20`, 1.51 needs `>=22`); React
+`>=18` is optional. This file ships in the npm package at
+`node_modules/@vllnt/convex-metering/docs/API.md` and matches the installed
+version.
 
 ## Entry points
 
-| Import                                              | Exports                                                                                                                                                                  |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@vllnt/convex-metering`                            | `Metering` class; types `MeteringComponent`, `MeteringOptions`, `DefineMeterOptions`, `RecordOptions`, `RecordOutcome`, `LimitOutcome`, `MeterDefinition`, `Usage`, `UsageEntry`, `SubjectUsageEntry`, `VerifyResult`, `Aggregation` |
-| `@vllnt/convex-metering/convex.config`              | the component definition for `app.use(...)`                                                                                                                             |
-| `@vllnt/convex-metering/react`                      | `useUsage`, `useUsageList`, type `UsageView` (see [React hooks](#react-hooks))                                                                                           |
-| `@vllnt/convex-metering/test`                       | `register(t, name = "metering")` for `convex-test` (see [Testing](#testing))                                                                                            |
-| `@vllnt/convex-metering/_generated/component`       | type `ComponentApi` (Convex codegen)                                                                                                                                     |
+| Import | Exports |
+| --- | --- |
+| `@vllnt/convex-metering` | The [`Metering`](#metering) class and the types [`MeteringComponent`](#meteringcomponent), [`MeteringOptions`](#meteringoptions), [`DefineMeterOptions`](#definemeteroptions), [`RecordOptions`](#recordoptions), [`RecordOutcome`](#recordoutcome), [`LimitOutcome`](#limitoutcome), [`MeterDefinition`](#meterdefinition), [`Usage`](#usage-type), [`UsageEntry`](#usageentry), [`SubjectUsageEntry`](#subjectusageentry), [`VerifyResult`](#verifyresult), [`Aggregation`](#aggregation). |
+| `@vllnt/convex-metering/convex.config` | The component definition ([default export](#convexconfig)), passed to `app.use(...)`. |
+| `@vllnt/convex-metering/react` | [`useUsage`](#useusage), [`useUsageList`](#useusagelist) and the type [`UsageView`](#usageview). |
+| `@vllnt/convex-metering/test` | [`register`](#register), to mount the component in a `convex-test` instance. |
+| `@vllnt/convex-metering/_generated/component` | The [`ComponentApi`](#componentapi) type (types only). |
 
-Construct the client with the mounted component and optional config:
+## Client
+
+### `Metering`
+
+`new Metering(component, options?)`
+
+- `component`: [`MeteringComponent`](#meteringcomponent), the mount's function
+  references: `components.metering`, or `components.<name>` for
+  `app.use(metering, { name })`.
+- `options`: [`MeteringOptions`](#meteringoptions). `defaultScope` (default
+  `"global"`) is used when a call omits `scope`; `defaultPeriod` (default
+  `"all"`) is used when a call omits `period`.
 
 ```ts
+// convex/metering.ts
 import { Metering } from "@vllnt/convex-metering";
 
-const metering = new Metering(components.metering, {
-  defaultScope: "global", // namespace applied when a call omits `scope`
-  defaultPeriod: "all", // period bucket applied when a call omits `period`
+import { components } from "./_generated/api.js";
+
+export const metering = new Metering(components.metering, {
+  defaultScope: "global",
+  defaultPeriod: "all",
 });
 ```
 
-All methods take the host `ctx` as the first argument: mutation methods need a
-mutation or action `ctx` (`runMutation`); query methods take any `ctx` with
-`runQuery`.
+Every method takes the host `ctx` as its first argument and returns a
+`Promise`. Mutation methods need a `ctx` with `runMutation` (a mutation or
+action context); query methods need a `ctx` with `runQuery` (a query, mutation
+or action context).
 
-**Optional fields accept `undefined`.** Every optional option field (`period?`,
-`scope?`, `actorRef?`, …) is typed `?: T | undefined`, so a host compiled with
-`exactOptionalPropertyTypes` can pass its own optional args straight through;
-an `undefined` field behaves as if it were omitted.
+**Optional fields accept `undefined`.** Every optional input field (`period?`,
+`scope?`, `actorRef?`, `batch?`, the React hook `scope?` and `limit?`) is typed
+`?: T | undefined`, so a host compiled with `exactOptionalPropertyTypes` can pass
+its own optional values through. An `undefined` field behaves as if omitted.
 
-**Periods are host-owned.** A `period` is an opaque string you choose
-(`"2026-06"`, `"2026-W24"`). The component never parses dates, so the calendar
-and timezone are entirely yours.
+**Periods are host-owned.** A `period` is an opaque string (`"2026-06"`,
+`"2026-W24"`). The component never parses dates.
 
-**Precision.** `sum` accumulates in IEEE-754 floats. For money-exact metering,
-record **integer minor-units** (bytes not GB, mills not dollars) and scale in
-the host.
+**Precision.** `sum` accumulates IEEE-754 doubles. For exact money, record
+integer minor units (bytes, mills) and scale in the host.
 
-**Time is server-sourced.** Timestamps are read from the server clock; no method
-accepts a caller one.
+**Time is server-sourced.** `createdAt`, record times and idempotency-key times
+are read from the server clock; no method accepts a caller timestamp.
 
-## Mutations
+**Idempotency keys.** An `idempotencyKey` is stored in a `seen` table, separate
+from the raw records, scoped to `(scope, meter)` (not to subject or period).
+A repeated key returns `{ recorded: false, reason: "duplicate" }` and changes
+nothing. Keys survive `reset`, `eraseSubject` and `pruneRecords`; only
+`pruneSeen` removes them. Keys are accepted only on `sum` meters.
 
-### `defineMeter(ctx, key, opts?) → { created }`
+### `defineMeter`
 
-`opts`:
-`{ aggregation?: "sum" | "max" | "last" | undefined; unit?: string | undefined; scope?: string | undefined }`
-(defaults `sum`, `""`).
+`defineMeter(ctx, key, opts?) → Promise<{ created: boolean }>` (mutation)
 
-Create or update a meter. `unit` may change freely. `aggregation` is **locked
-once any usage exists** (`AGGREGATION_LOCKED`) — switching it would leave the
-rollup computed under two rules; define a new meter key instead.
+`opts`: [`DefineMeterOptions`](#definemeteroptions),
+`{ aggregation?: "sum" | "max" | "last"; unit?: string; scope?: string }`.
 
-**Throws** `INVALID_ARGUMENT` (an empty `scope` or `key`), `AGGREGATION_LOCKED`.
+Create or update the meter `(scope, key)`. `aggregation` defaults to `"sum"`
+and `unit` to `""`; the client always sends both, and an update writes them
+when they differ from the stored values (no write otherwise). `unit` may change
+at any time. `aggregation` may change only while the meter has no rollup in
+that scope. Returns `{ created: true }` on insert, `{ created: false }` on
+update.
 
-### `record(ctx, meter, subjectRef, quantity, opts?) → RecordOutcome`
+**Throws** `INVALID_ARGUMENT` (empty `scope` or `key`), `AGGREGATION_LOCKED`.
 
-`opts`: `{ period?; idempotencyKey?; actorRef?; scope? }`.
+### `record`
 
-Record a usage event and advance the rollup. `{ recorded: true; value; count }`,
-or `{ recorded: false; reason: "duplicate" }` when the `idempotencyKey` was
-already seen. The dedup is tracked in a dedicated `seen` ledger that **survives
-`pruneRecords`**, so a redelivered event never double-counts even after raw
-records are pruned, while its key is retained. Keys are scoped to
-`(scope, meter)`, not subject or period; use a unique key per logical event
-across that meter. Omit the key and each call records again. `actorRef` is
-stored on the record for the audit trail.
+`record(ctx, meter, subjectRef, quantity, opts?) → Promise<RecordOutcome>` (mutation)
 
-**Throws** `INVALID_QUANTITY` (negative/non-finite), `INVALID_ARGUMENT` (an empty
-string argument), `QUANTITY_OVERFLOW`, `METER_NOT_FOUND`,
-`IDEMPOTENCY_NOT_SUPPORTED` (an `idempotencyKey` on a non-`sum` gauge),
-`PERIOD_CLOSED` (the period was frozen).
+`opts`: [`RecordOptions`](#recordoptions),
+`{ period?: string; idempotencyKey?: string; actorRef?: string; scope?: string }`.
 
-### `recordWithLimit(ctx, meter, subjectRef, quantity, limit, opts?) → LimitOutcome`
+Append a record and fold `quantity` into the `(meter, subjectRef, period)`
+rollup under the meter's aggregation (`sum` adds, `max` keeps the peak, `last`
+keeps the latest; the first record sets the value). Returns
+`{ recorded: true, value, count }` with the new rollup, or
+`{ recorded: false, reason: "duplicate" }` for a repeated `idempotencyKey`.
+`actorRef` is stored on the record.
 
-`opts`: `{ period?; idempotencyKey?; actorRef?; scope? }`.
+Checks run in this order: `quantity`, empty strings, meter exists, key on a
+non-`sum` meter, period closed, duplicate key, overflow.
 
-Atomic check-and-record: records only if it would not push the period over
-`limit`, in one serializable mutation (no read-then-write race). Returns the
-recorded outcome, `duplicate`, or
-`{ recorded: false; reason: "limit_exceeded"; value; limit }`. A duplicate key
-returns `duplicate` before the limit is checked.
+**Throws** `INVALID_QUANTITY` (negative or non-finite), `INVALID_ARGUMENT`
+(empty `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or
+`actorRef`), `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`, `PERIOD_CLOSED`,
+`QUANTITY_OVERFLOW`.
 
-**Throws** `INVALID_QUANTITY`, `INVALID_LIMIT` (negative/non-finite `limit`),
-`INVALID_ARGUMENT`, `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`,
+### `recordWithLimit`
+
+`recordWithLimit(ctx, meter, subjectRef, quantity, limit, opts?) → Promise<LimitOutcome>` (mutation)
+
+`opts`: [`RecordOptions`](#recordoptions).
+
+Compute the projected rollup (current value folded with `quantity`) and record
+only when it is `<= limit`, in one mutation. Returns the recorded outcome,
+`{ recorded: false, reason: "duplicate" }`, or
+`{ recorded: false, reason: "limit_exceeded", value, limit }` with the
+unchanged `value`. A repeated key returns `duplicate` before the limit is
+checked. `limit_exceeded` writes nothing, including the key.
+
+**Throws** `INVALID_QUANTITY`, `INVALID_LIMIT` (negative or non-finite
+`limit`), `INVALID_ARGUMENT`, `METER_NOT_FOUND`, `IDEMPOTENCY_NOT_SUPPORTED`,
 `PERIOD_CLOSED`.
 
-### `adjust(ctx, meter, subjectRef, delta, opts?) → RecordOutcome`
+### `adjust`
 
-`opts`: `{ period?; idempotencyKey?; actorRef?; scope? }`. **`sum` meters
-only.**
+`adjust(ctx, meter, subjectRef, delta, opts?) → Promise<RecordOutcome>` (mutation)
 
-Post a signed correction (`delta` may be negative — a refund/credit/void).
-Appends a reversing record and applies the delta to the rollup, which never goes
-negative. Pruning records does not change that rollup. Retry-deduplicated only
-when an `idempotencyKey` is supplied and retained.
+`opts`: `{ period?: string; idempotencyKey?: string; actorRef?: string; scope?: string }`.
+`sum` meters only.
+
+Append a record with the signed `delta` (negative for a refund, credit or void)
+and add it to the rollup, which may not go below zero. The rollup's `count`
+goes up by 1. A period with no usage gets a new rollup. Returns the same shape
+as `record`.
 
 **Throws** `INVALID_QUANTITY` (non-finite `delta`), `INVALID_ARGUMENT`,
-`QUANTITY_OVERFLOW`, `METER_NOT_FOUND`,
-`ADJUST_REQUIRES_SUM`, `PERIOD_CLOSED`, `ADJUST_BELOW_ZERO` (the correction
-would make the rollup negative).
+`METER_NOT_FOUND`, `ADJUST_REQUIRES_SUM`, `PERIOD_CLOSED`, `QUANTITY_OVERFLOW`,
+`ADJUST_BELOW_ZERO`.
 
-### `closePeriod(ctx, meter, subjectRef, opts?) → boolean`
+### `closePeriod`
 
-`opts`: `{ period?; scope? }`. Freeze a `(meter, subject, period)` so later
-`record`/`adjust`/`recordWithLimit` into it throw `PERIOD_CLOSED`. `reset` and
-`eraseSubject` do not check the freeze: they still delete a closed period.
-Returns `false` if no usage exists for it. `usage()` then reports
-`closed: true`. Closing an already-closed period is a no-op that returns
-`true` and keeps the original freeze time.
+`closePeriod(ctx, meter, subjectRef, opts?) → Promise<boolean>` (mutation)
 
-### `reset(ctx, meter, subjectRef, opts?) → number`
+`opts`: `{ period?: string; scope?: string }`.
 
-`opts`: `{ period?; scope?; batch? }` (`batch` default `200`). Clear a subject's
-usage for one `(meter, period)` — deletes the rollup and raw records in bounded,
-self-rescheduling batches; returns the records removed this pass (0 once
-drained). A pass that empties the period also deletes the rollup, so another
-pass is scheduled only when the batch was full. A closed period is deleted
-too. Idempotency keys in `seen` are kept, so a late replay stays deduped
-rather than re-counting.
+Set `closedAt` on the `(meter, subjectRef, period)` rollup. Later `record`,
+`recordWithLimit` and `adjust` into it throw `PERIOD_CLOSED`, and `usage`
+reports `closed: true`. Returns `false` when the period has no rollup. Closing
+an already-closed period returns `true` and keeps the original `closedAt`.
+`reset` and `eraseSubject` still delete a closed period. Empty strings are not
+rejected.
 
-### `eraseSubject(ctx, subjectRef, opts?) → number`
+### `reset`
 
-`opts`: `{ scope?; batch? }`. Erase a subject across **every meter and period**
-(records + rollups), bounded + self-rescheduling; returns the records and
-rollups removed this pass, including closed periods. The GDPR right-to-erasure
-primitive. `seen` (idempotency keys, no subject PII) is left intact.
+`reset(ctx, meter, subjectRef, opts?) → Promise<number>` (mutation)
 
-### `pruneRecords(ctx, before, batch?) → number` · `pruneSeen(ctx, before, batch?) → number`
+`opts`: `{ period?: string; scope?: string; batch?: number }` (`batch` default
+`200`, integer 1..500).
 
-`before` required (absolute ms). `pruneRecords` deletes raw records older than
-`before`; `pruneSeen` deletes idempotency keys older than `before` — set its
-cutoff **older than your longest retry / redelivery window** (pruning a key
-re-opens its replay). Rollups are never touched. Both bounded +
-self-rescheduling; return the count removed in the first pass. Both span all
-scopes in the mount: expose only to authorized administrators. All cleanup
-methods use a default batch of 200 and require integers in 1–500
-(`INVALID_BATCH`).
+Delete up to `batch` raw records of one `(meter, subjectRef, period)`. A full
+batch schedules the next pass; the pass that finds fewer than `batch` records
+also deletes the rollup. Returns the records deleted in this pass. Closed
+periods are deleted too. `seen` keys are kept, so a replayed event stays a
+`duplicate`.
 
-## Queries
+**Throws** `INVALID_BATCH`.
 
-### `getMeter(ctx, key, scope?) → MeterDefinition | null` · `listMeters(ctx, scope?) → MeterDefinition[]`
+### `eraseSubject`
 
-The meter definition, or every meter in the scope (the discovery surface).
+`eraseSubject(ctx, subjectRef, opts?) → Promise<number>` (mutation)
 
-### `usage(ctx, meter, subjectRef, opts?) → { value, count, closed } | null`
+`opts`: `{ scope?: string; batch?: number }` (`batch` default `200`, integer
+1..500).
 
-`opts`: `{ period?; scope? }`. A subject's rolled-up usage for one period
-(`closed` once frozen), or `null`. The O(1) read for billing / limit checks.
+Delete up to `batch` records and up to `batch` rollups of `subjectRef` in one
+scope, across every meter and period (closed periods included). Schedules
+another pass while either batch was full. Returns the rows deleted in this
+pass. `seen` keys are not touched.
 
-### `listUsage(ctx, meter, subjectRef, scope?) → { period, value, count, closed }[]`
+**Throws** `INVALID_BATCH`.
 
-Every period's rollup for a subject on a meter.
+### `pruneRecords`
 
-### `listSubjectUsage(ctx, subjectRef, scope?) → { meter, period, value, count, closed }[]`
+`pruneRecords(ctx, before, batch?) → Promise<number>` (mutation)
 
-Every meter+period rollup for a subject across the scope — invoice line items in
-one read.
+Delete up to `batch` (default `200`, integer 1..500) raw records whose record
+time is `< before` (absolute ms), oldest first, across every scope in the
+mount. Schedules the next pass while a pass is full. Returns this pass's count.
+Rollups and `seen` keys are not touched, so a pruned event's key still dedupes.
 
-### `verify(ctx, meter, subjectRef, opts?) → { rollupValue, rollupCount, recomputedValue, recordsRemaining, consistent }`
+**Throws** `INVALID_BATCH`, `INVALID_BEFORE` (non-finite `before`).
 
-`opts`: `{ period?; scope? }`. Reconcile the rollup against the surviving
-records by re-folding them under the meter's aggregation. `consistent` is
-`rollupValue === recomputedValue`; it does not compare counts. Complete
-reconciliation requires the full relevant record history: `recordsRemaining > 0`
-alone does not rule out partial pruning. The query collects all matching records
-and remains subject to Convex read limits.
+### `pruneSeen`
+
+`pruneSeen(ctx, before, batch?) → Promise<number>` (mutation)
+
+Delete up to `batch` (default `200`, integer 1..500) idempotency keys stored
+`< before` (absolute ms), oldest first, across every scope in the mount.
+Schedules the next pass while a pass is full. Returns this pass's count. A
+deleted key no longer dedupes: set `before` older than your longest retry or
+redelivery window.
+
+**Throws** `INVALID_BATCH`, `INVALID_BEFORE`.
+
+### `getMeter`
+
+`getMeter(ctx, key, scope?) → Promise<MeterDefinition | null>` (query)
+
+The meter definition, or `null`.
+
+### `listMeters`
+
+`listMeters(ctx, scope?) → Promise<MeterDefinition[]>` (query)
+
+Every meter in one scope (default: the client `defaultScope`). Not paginated.
+
+### `usage`
+
+`usage(ctx, meter, subjectRef, opts?) → Promise<Usage | null>` (query)
+
+`opts`: `{ period?: string; scope?: string }`.
+
+`{ value, count, closed }` for one period, read from one rollup document, or
+`null` when nothing was recorded. Does not check that the meter exists.
+
+### `listUsage`
+
+`listUsage(ctx, meter, subjectRef, scope?) → Promise<UsageEntry[]>` (query)
+
+One `{ period, value, count, closed }` entry per period of one meter for a
+subject, ordered by `period` string. Not paginated.
+
+### `listSubjectUsage`
+
+`listSubjectUsage(ctx, subjectRef, scope?) → Promise<SubjectUsageEntry[]>` (query)
+
+One `{ meter, period, value, count, closed }` entry per meter and period for a
+subject in one scope. Not paginated.
+
+### `verify`
+
+`verify(ctx, meter, subjectRef, opts?) → Promise<VerifyResult>` (query)
+
+`opts`: `{ period?: string; scope?: string }`.
+
+Re-fold the surviving records of one period under the meter's aggregation and
+compare. Returns `{ rollupValue, rollupCount, recomputedValue,
+recordsRemaining, consistent }`; `consistent` is
+`rollupValue === recomputedValue` and does not compare counts. It is complete
+only while the period's full record history survives: `recordsRemaining > 0`
+does not rule out partial pruning. With no rollup and no records it returns
+zeros and `consistent: true`. Reads every record of the period (not
+paginated).
 
 **Throws** `METER_NOT_FOUND`.
 
-## Error codes
+## Types
 
-Errors are thrown as `ConvexError` with `data: { code, message }`; branch on
-`error instanceof ConvexError && error.data.code === "PERIOD_CLOSED"`.
+### `MeteringComponent`
 
-| Code                        | Thrown by                                          | When                                                   |
-| --------------------------- | -------------------------------------------------- | ------------------------------------------------------ |
-| `INVALID_BATCH`             | Cleanup methods                                    | Batch is not an integer in 1–500.                      |
-| `INVALID_QUANTITY`          | `record` / `recordWithLimit` / `adjust`            | `quantity` negative/non-finite, or `delta` non-finite. |
-| `INVALID_LIMIT`             | `recordWithLimit`                                  | `limit` negative/non-finite.                           |
-| `INVALID_BEFORE`            | `pruneRecords` / `pruneSeen`                       | `before` is not finite.                                |
-| `INVALID_ARGUMENT`          | `defineMeter` / `record` / `recordWithLimit` / `adjust` | A string argument (`scope`, `key`, `meter`, `subjectRef`, `period`, `idempotencyKey`, `actorRef`) is empty. |
-| `QUANTITY_OVERFLOW`         | `record` / `adjust`                                | The rollup would exceed the largest finite number.     |
-| `METER_NOT_FOUND`           | `record` / `recordWithLimit` / `adjust` / `verify` | No meter defined for `(scope, meter)`.                 |
-| `IDEMPOTENCY_NOT_SUPPORTED` | `record` / `recordWithLimit`                       | An `idempotencyKey` on a non-`sum` (gauge) meter.      |
-| `PERIOD_CLOSED`             | `record` / `recordWithLimit` / `adjust`            | The period was frozen by `closePeriod`.                |
-| `AGGREGATION_LOCKED`        | `defineMeter`                                      | An aggregation change after usage exists.              |
-| `ADJUST_REQUIRES_SUM`       | `adjust`                                           | A non-`sum` meter.                                     |
-| `ADJUST_BELOW_ZERO`         | `adjust`                                           | The correction would make the rollup negative.         |
+The type of `components.metering`: the component's `mutations` and `queries`
+function references. Pass it to [`Metering`](#metering).
+
+### `MeteringOptions`
+
+`{ defaultScope?: string | undefined; defaultPeriod?: string | undefined }`.
+Defaults `"global"` and `"all"`.
+
+### `DefineMeterOptions`
+
+`{ aggregation?: Aggregation | undefined; unit?: string | undefined; scope?: string | undefined }`.
+
+### `RecordOptions`
+
+`{ period?: string | undefined; idempotencyKey?: string | undefined; actorRef?: string | undefined; scope?: string | undefined }`.
+
+### `RecordOutcome`
+
+`{ recorded: true; value: number; count: number } | { recorded: false; reason: "duplicate" }`.
+
+### `LimitOutcome`
+
+`RecordOutcome | { recorded: false; reason: "limit_exceeded"; value: number; limit: number }`.
+
+### `MeterDefinition`
+
+`{ key: string; scope: string; aggregation: Aggregation; unit: string; createdAt: number }`.
+`createdAt` is in ms.
+
+### `Usage` type
+
+`{ value: number; count: number; closed: boolean }`. `count` is the number of
+records written into the period (`record`, `recordWithLimit` and `adjust` each
+add one); pruning does not lower it.
+
+### `UsageEntry`
+
+`{ period: string; value: number; count: number; closed: boolean }`.
+
+### `SubjectUsageEntry`
+
+`{ meter: string; period: string; value: number; count: number; closed: boolean }`.
+
+### `VerifyResult`
+
+`{ rollupValue: number; rollupCount: number; recomputedValue: number; recordsRemaining: number; consistent: boolean }`.
+
+### `Aggregation`
+
+`"sum" | "max" | "last"`.
 
 ## React hooks
 
-`@vllnt/convex-metering/react` (optional peer `react` >=18). Each hook wraps
-`useQuery` over a query reference **your app exports** (a host wrapper around
-`usage` / `listUsage` with its own auth); the component never imports your `api`.
+`@vllnt/convex-metering/react` (optional peer `react >=18`; also imports
+`convex/react`). Each hook wraps `useQuery` over a public query reference that
+**your app exports**, usually a wrapper around `usage` or `listUsage` with its
+own authorization; the component never imports your `api`. The hooks take no
+`"skip"` argument.
 
-### `useUsage(usageRef, args, opts?) → UsageView`
+### `useUsage`
 
-`args`: `{ meter; subjectRef; period; scope? }`; `opts`: `{ limit? }`. Returns
-`{ isLoading, value, count, closed }` (`value`/`count` are `0` and `closed` is
-`false` while loading or when nothing is recorded). With a `limit` it also
-returns `limit`, `remaining` (`max(0, limit - value)`), `fraction` (`0..1`;
-`0` when `limit` is `0`) and `exceeded` (`value > limit`).
+`useUsage(usageRef, args, opts?) → UsageView`
 
-### `useUsageList(listUsageRef, args) → UsageEntry[] | undefined`
+`usageRef`: a public query with args `{ meter; subjectRef; period; scope? }`
+returning `Usage | null`. `args`:
+`{ scope?: string | undefined; meter: string; subjectRef: string; period: string }`.
+`opts`: `{ limit?: number | undefined }`.
 
-`args`: `{ meter; subjectRef; scope? }`. `undefined` while loading.
+### `useUsageList`
 
-## Testing
+`useUsageList(listUsageRef, args) → UsageEntry[] | undefined`
 
-`@vllnt/convex-metering/test` exports `register(t, name = "metering")`, which
-mounts the component in a `convex-test` instance. `t` is the host app's own
-`convexTest(hostSchema, modules)` instance, whatever its tables; pass `name` when
-the host mounts the component under another name. It ships as TypeScript source
-and needs `convex-test` and `vitest` (Vite's `import.meta.glob`) in the
-consuming app.
+`listUsageRef`: a public query with args `{ meter; subjectRef; scope? }`
+returning `UsageEntry[]`. `args`:
+`{ scope?: string | undefined; meter: string; subjectRef: string }`. Returns
+`undefined` while loading.
+
+### `UsageView`
+
+`{ isLoading; value; count; closed; limit?; remaining?; fraction?; exceeded? }`.
+`value` and `count` are `0` and `closed` is `false` while loading or when
+nothing is recorded. With a `limit`: `remaining` is `max(0, limit - value)`,
+`fraction` is `min(1, value / limit)` (`0` when `limit <= 0`), and `exceeded` is
+`value > limit`.
+
+## Other entry points
+
+### `convex.config`
+
+The default export of `@vllnt/convex-metering/convex.config` is the component
+definition (`defineComponent("metering")`). Pass it to `app.use(metering)`, or
+`app.use(metering, { name })` for a named mount.
+
+### `register`
+
+`register(t, name = "metering") → void`, from `@vllnt/convex-metering/test`.
+Calls `t.registerComponent(name, schema, modules)` with the component's schema
+and modules. `t` is the host app's own `convexTest(hostSchema, modules)`
+instance, whatever its tables. The entry ships as TypeScript source and needs
+`convex-test` and Vite's `import.meta.glob` (for example through `vitest`).
+Build the host's module map with `import.meta.glob("./**/*.*s")` so it includes
+the `.js` files in `convex/_generated/`; with `./**/*.ts` and no `.d.ts` files
+there, `convex-test` throws `Could not find the "_generated" directory`.
+
+### `ComponentApi`
+
+The generated type of the mounted component, from
+`@vllnt/convex-metering/_generated/component` (types only).
+
+## Error codes
+
+Thrown as `ConvexError` with `data: { code, message }`; branch on
+`error instanceof ConvexError && error.data.code === "PERIOD_CLOSED"`.
+
+| Code | Thrown by | When |
+| --- | --- | --- |
+| `INVALID_ARGUMENT` | `defineMeter`, `record`, `recordWithLimit`, `adjust` | A string argument is empty: `scope` or `key` (`defineMeter`); `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or `actorRef` (the others). |
+| `INVALID_QUANTITY` | `record`, `recordWithLimit`, `adjust` | `quantity` is negative or non-finite, or `delta` is non-finite. |
+| `INVALID_LIMIT` | `recordWithLimit` | `limit` is negative or non-finite. |
+| `METER_NOT_FOUND` | `record`, `recordWithLimit`, `adjust`, `verify` | No meter `(scope, meter)`. |
+| `IDEMPOTENCY_NOT_SUPPORTED` | `record`, `recordWithLimit` | An `idempotencyKey` on a `max` or `last` meter. |
+| `PERIOD_CLOSED` | `record`, `recordWithLimit`, `adjust` | The period was closed by `closePeriod`. |
+| `QUANTITY_OVERFLOW` | `record`, `adjust` | The rollup would become non-finite. |
+| `AGGREGATION_LOCKED` | `defineMeter` | `aggregation` changes while the meter has a rollup. |
+| `ADJUST_REQUIRES_SUM` | `adjust` | The meter is not `sum`. |
+| `ADJUST_BELOW_ZERO` | `adjust` | The rollup would go below zero. |
+| `INVALID_BATCH` | `reset`, `eraseSubject`, `pruneRecords`, `pruneSeen` | `batch` is not an integer in 1..500. |
+| `INVALID_BEFORE` | `pruneRecords`, `pruneSeen` | `before` is not finite. |

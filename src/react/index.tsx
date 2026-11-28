@@ -17,14 +17,21 @@ import type { Usage, UsageEntry } from "../client/types.js";
 
 /** A live usage view for a "8,200 / 10,000 this period" meter, derived against an optional `limit`. */
 export interface UsageView {
+  /** True until the query returns its first result. */
   isLoading: boolean;
+  /** The period value; `0` while loading or when nothing is recorded. */
   value: number;
+  /** The period's record count; `0` while loading or when nothing is recorded. */
   count: number;
+  /** True once the period is closed; `false` while loading. */
   closed: boolean;
-  /** Present only when a `limit` was supplied. */
+  /** The supplied `limit`. Present only when a `limit` was supplied. */
   limit?: number;
+  /** `max(0, limit - value)`. Present only when a `limit` was supplied. */
   remaining?: number;
+  /** `min(1, value / limit)`, or `0` when `limit <= 0`. Present only with a `limit`. */
   fraction?: number;
+  /** `value > limit`. Present only when a `limit` was supplied. */
   exceeded?: boolean;
 }
 

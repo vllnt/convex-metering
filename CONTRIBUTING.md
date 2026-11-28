@@ -42,7 +42,7 @@ at least one adversarial test (invalid input, not-found, boundary).
 - Target `main`
 - One logical change per PR
 - Include tests for new behavior or bug fixes
-- Ensure all checks pass: `pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm build`
+- Ensure all checks pass: `pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm build && pnpm check:docs`
 
 ## Releases
 

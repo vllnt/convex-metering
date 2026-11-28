@@ -1,57 +1,71 @@
 # @vllnt/convex-metering
 
-> Metered usage records — idempotent usage events rolled up per billing period, as a Convex component
+> Usage metering as a Convex component: idempotent usage events rolled up per billing period, with atomic limits, period close and signed corrections.
 
-`@vllnt/convex-metering` is a publishable Convex component. It targets `convex@^1.45.0`. It stores
-four sandboxed tables — `meters` (definition: an `aggregation` rule of `sum`/`max`/`last` + display
-`unit`, locked once usage exists), `records` (append-only raw usage events + optional `actorRef`),
-`seen` (the idempotency-key ledger, **separate from `records`** so pruning audit never re-opens a
-duplicate), and `rollups` (the materialized per-`(meter, subject, period)` aggregate, the O(1)
-billable truth, with `closedAt` to freeze a period). `record` folds a usage event into the rollup and
-is idempotent via `idempotencyKey` (sum meters only; a key on a gauge throws); `recordWithLimit`
-atomically refuses to cross a `limit`; `adjust` posts signed corrections to sum meters (never below
-zero); `closePeriod` freezes a billed period (later writes throw `PERIOD_CLOSED`). `usage`/`listUsage`/
-`listSubjectUsage` read rollups (with `closed`); `verify` reconciles a rollup against surviving
-records; `reset` (one period) and `eraseSubject` (GDPR, all meters) delete in self-rescheduling
-batches; `pruneRecords` and `pruneSeen` retain records and dedup keys on independent cutoffs. `period`
-is an opaque host string (no date parsing); record integer minor-units for money precision; time is
-server-sourced. The component owns accurate, idempotent usage accounting; the host owns the meter
-meaning, the opaque `subjectRef`/`actorRef`, period bucketing, pricing, precision, retention, and auth.
+Install `@vllnt/convex-metering` (unreleased builds from `main` use the `canary` dist-tag). Peer
+dependency `convex@^1.45.0`; optional peer `react >=18` for the `./react` hooks; Node.js `>=18`
+(`engines.node`; `convex` 1.45 needs `>=20`, 1.51 needs `>=22`). ES modules only. Mount it with
+`app.use(metering)` from `@vllnt/convex-metering/convex.config` and call it through
+`new Metering(components.metering)` from host mutations and queries. Mutations: `defineMeter`,
+`record`, `recordWithLimit`, `adjust`, `closePeriod`, `reset`, `eraseSubject`, `pruneRecords`,
+`pruneSeen`. Queries: `getMeter`, `listMeters`, `usage`, `listUsage`, `listSubjectUsage`, `verify`.
+A meter has an aggregation (`sum` adds, `max` keeps the peak, `last` keeps the latest), locked once
+it has a rollup (`AGGREGATION_LOCKED`). Each `(meter, subjectRef, period)` has one rollup
+`{ value, count, closed }`; `period` is an opaque host string (no date parsing). `idempotencyKey`
+works on `sum` meters only, is scoped to `(scope, meter)` (not subject or period), lives in a `seen`
+table that survives `reset`, `eraseSubject` and `pruneRecords`, and is removed only by `pruneSeen`.
+`recordWithLimit` records only when the projected rollup is `<= limit`, else returns
+`limit_exceeded`. `adjust` posts a signed delta to a `sum` meter, never below zero.
+`closePeriod` makes later writes to that period throw `PERIOD_CLOSED` (checked before the duplicate
+check). `verify` re-folds the surviving records and compares values only. Client defaults:
+`defaultScope: "global"`, `defaultPeriod: "all"`; meter defaults `aggregation: "sum"`, `unit: ""`.
+Cleanup batches default to 200, integer 1..500 (`INVALID_BATCH`); they return the first pass's count
+and reschedule while full. `pruneRecords` and `pruneSeen` span every scope. List queries and
+`verify` are not paginated. Errors are `ConvexError` with `data.code`. The host owns auth,
+`subjectRef`, `period`, pricing and retention; scopes are not authorization.
 
-Client defaults: `defaultScope:
-"global"`, `defaultPeriod: "all"`; meter defaults: `aggregation: "sum"`, `unit:
-""`. Retry keys are optional and scoped to `(scope, meter)`, not subject/period.
-Pruning seen keys removes replay protection. Prune methods span all scopes in a
-mount. Cleanup batches default to 200, integer 1–500. `verify` returns exactly
-`{ rollupValue, rollupCount, recomputedValue, recordsRemaining, consistent }`;
-consistent compares values only and full reconciliation requires complete history,
-not merely a positive remaining count. List/verify reads are not paginated.
-Named mounts isolate state; the host must authorize scopes and subjects.
+## When to use
+
+- Use it when you bill or report usage per subject and period and a retried event must not be
+  counted twice.
+- Use it when a usage cap must be checked and recorded in one transaction, or a billed period must
+  be frozen and corrected with an audit trail.
+- Do not use it for allowances that reset on a schedule: use `@vllnt/convex-quota`. Do not use it
+  for prepaid balances: use `@vllnt/convex-wallet`. Do not use it to throttle requests per time
+  window: use a rate limiter such as `@convex-dev/rate-limiter`.
 
 ## For coding agents
 
-The docs are bundled at `node_modules/@vllnt/convex-metering/docs/`, together with `README.md`,
-`CHANGELOG.md` and this file. They match the installed version. Read them before writing code.
+The docs are bundled in the npm package at `node_modules/@vllnt/convex-metering/docs/` and match the
+installed version. Read them, and the bundled `src/`, before writing code. The links below to `./`
+paths are files inside the installed package.
 
 ## Docs
 
-- [README](./README.md): Project overview, installation, usage examples, architecture
-- [API Reference](./docs/API.md): Entry points, client methods, return shapes, React hooks, error codes
+- [README](./README.md): Install, quick start, common tasks, limits
+- [API Reference](./docs/API.md): Every export, signature, return shape and validation rule
+- [Error codes](./docs/API.md#error-codes): Every error code and when it is thrown
+- [Errors and fixes](./README.md#errors-and-fixes): Every error code and message, its cause and the fix
 - [Changelog](./CHANGELOG.md): Version history and release notes
-- [Contributing](https://github.com/vllnt/convex-metering/blob/main/CONTRIBUTING.md): Development setup, validation commands, release workflow
+- [License](./LICENSE): MIT license
 
-## Examples
+## Source (bundled)
 
-- [Example component wrapper](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.ts): Host-app wrapper functions
-- [Example tests](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.test.ts): End-to-end usage coverage with `convex-test`
+- [Client](./src/client/index.ts): The `Metering` class
+- [Types](./src/client/types.ts): Public TypeScript interfaces
+- [React hooks](./src/react/index.tsx): `useUsage`, `useUsageList`
+- [Test helper](./src/test.ts): `register` for `convex-test`
+
+## Examples (repository only, not bundled; `main` may be newer than the installed version)
+
+- [Example component wrapper](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.ts): Host-side wrapper functions
+- [Example tests](https://github.com/vllnt/convex-metering/blob/main/example/convex/example.test.ts): Usage coverage with `convex-test`
 
 ## Ecosystem
 
-- [vllnt oss](https://oss.vllnt.com/llms.txt): Index of the other vllnt packages
-
-## Optional
-
-- [AGENTS](https://github.com/vllnt/convex-metering/blob/main/AGENTS.md): Agent instructions for contributors to this repository
-- [Security Policy](https://github.com/vllnt/convex-metering/blob/main/SECURITY.md): Vulnerability reporting policy
-- [Code of Conduct](https://github.com/vllnt/convex-metering/blob/main/CODE_OF_CONDUCT.md): Community participation guidelines
-- [License](./LICENSE): MIT license
+- [Package page](https://oss.vllnt.com/packages/convex-metering)
+- [Release feed](https://oss.vllnt.com/packages/convex-metering/rss.xml)
+- [All @vllnt packages](https://oss.vllnt.com/llms.txt)
+- [Search vllnt packages and docs](https://index.vllnt.com)
+- [vllnt](https://vllnt.com/llms.txt)
+- [Author](https://bntvllnt.com)
