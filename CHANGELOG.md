@@ -28,6 +28,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- README "Testing" and `docs/API.md` (`register`) now give the test tooling install command
+  (`pnpm add -D convex-test vitest vite @edge-runtime/vm`) and the Vitest `edge-runtime` config;
+  "Compatibility" notes that `convex-test` 0.0.72+ needs `convex@^1.46.0`, so hosts on convex 1.45.x
+  use `convex-test@0.0.71` or older.
 - Rewrite the README for coding agents (fixed section order, a Quick start in the first 40 lines,
   an export table, an errors table with every thrown code and message, a limits list), rewrite
   `docs/API.md` with one heading per export, refresh `llms.txt`, and add TSDoc to every public

@@ -365,6 +365,12 @@ instance, whatever its tables. The entry ships as TypeScript source and needs
 Build the host's module map with `import.meta.glob("./**/*.*s")` so it includes
 the `.js` files in `convex/_generated/`; with `./**/*.ts` and no `.d.ts` files
 there, `convex-test` throws `Could not find the "_generated" directory`.
+Install the test tooling with
+`pnpm add -D convex-test vitest vite @edge-runtime/vm` and set
+`test.environment: "edge-runtime"` in your Vitest config. `convex-test` 0.0.72
+and later declare peer `convex@^1.46.0` and fail `tsc` with TS2724
+(`FunctionReference_future`) on convex 1.45 unless `skipLibCheck` is on; on
+convex 1.45.x, use `convex-test@0.0.71` or older (peer `convex@^1.43.0`).
 
 ### `ComponentApi`
 

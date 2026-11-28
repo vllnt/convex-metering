@@ -451,13 +451,37 @@ the limit returns `{ recorded: false, reason: "limit_exceeded", value, limit }`.
 - `@vllnt/convex-metering/test` ships as TypeScript source (`src/test.ts`) and
   needs `convex-test` and Vite's `import.meta.glob` (for example through
   `vitest`), with `vite/client` types.
+- `convex-test` 0.0.72 and later declare peer `convex@^1.46.0`, and their types
+  import `FunctionReference_future`, which convex 1.45 lacks (`tsc` reports
+  TS2724 inside `convex-test` unless `skipLibCheck` is on). On convex 1.45.x,
+  use `convex-test@0.0.71` or older (peer `convex@^1.43.0`).
 
 ## Testing
 
-Mount the component in your own `convex-test` suite with `register`. This test
-uses the Quick start's `convex/usage.ts` and runs in Vitest's `edge-runtime`
-environment (`@edge-runtime/vm`). Use the glob `./**/*.*s` (the pattern
-`convex-test` uses by default): it also matches the `.js` files Convex codegen
+Mount the component in your own `convex-test` suite with `register`. Install
+the test tooling as dev dependencies. `vite` is a required Vitest peer and
+provides the `vite/client` types; without `@edge-runtime/vm`, Vitest throws
+`Cannot find package '@edge-runtime/vm'`.
+
+```bash
+pnpm add -D convex-test vitest vite @edge-runtime/vm
+```
+
+This test uses the Quick start's `convex/usage.ts` and runs in Vitest's
+`edge-runtime` environment, set in your Vitest config:
+
+```ts
+// vitest.config.ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "edge-runtime",
+  },
+});
+```
+
+Use the glob `./**/*.*s` (the pattern `convex-test` uses by default): it also matches the `.js` files Convex codegen
 writes to `convex/_generated/`. `./**/*.ts` finds that directory only through
 its `.d.ts` files; without them `convex-test` throws
 `Could not find the "_generated" directory`.
