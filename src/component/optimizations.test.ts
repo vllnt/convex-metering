@@ -183,3 +183,29 @@ describe("recordWithLimit with an idempotency key", () => {
     expect(await t.run(async (ctx) => (await ctx.db.query("seen").collect()).length)).toBe(1);
   });
 });
+
+describe("records keep the audit fields", () => {
+  test("record, recordWithLimit and adjust store actorRef and idempotencyKey; unset ones stay absent", async () => {
+    const t = setup();
+    await seed(t, 0);
+    const base = { scope: "s", meter: "api", subjectRef: "o", period: "p" };
+    await t.mutation(api.mutations.record, { ...base, quantity: 1, actorRef: "a-record", idempotencyKey: "k-record" });
+    await t.mutation(api.mutations.recordWithLimit, {
+      ...base,
+      quantity: 1,
+      limit: 10,
+      actorRef: "a-limit",
+      idempotencyKey: "k-limit",
+    });
+    await t.mutation(api.mutations.adjust, { ...base, delta: 1, actorRef: "a-adjust", idempotencyKey: "k-adjust" });
+    await t.mutation(api.mutations.record, { ...base, quantity: 1 });
+    const rows = await t.run(async (ctx) => ctx.db.query("records").collect());
+    expect(rows.map((r) => ({ actorRef: r.actorRef, idempotencyKey: r.idempotencyKey }))).toEqual([
+      { actorRef: "a-record", idempotencyKey: "k-record" },
+      { actorRef: "a-limit", idempotencyKey: "k-limit" },
+      { actorRef: "a-adjust", idempotencyKey: "k-adjust" },
+      { actorRef: undefined, idempotencyKey: undefined },
+    ]);
+    expect(rows.map((r) => "actorRef" in r || "idempotencyKey" in r)).toEqual([true, true, true, false]);
+  });
+});

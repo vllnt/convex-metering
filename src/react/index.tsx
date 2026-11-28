@@ -38,11 +38,11 @@ export function useUsage(
   usageRef: FunctionReference<
     "query",
     "public",
-    { scope?: string; meter: string; subjectRef: string; period: string },
+    { scope?: string | undefined; meter: string; subjectRef: string; period: string },
     Usage | null
   >,
-  args: { scope?: string; meter: string; subjectRef: string; period: string },
-  opts: { limit?: number } = {},
+  args: { scope?: string | undefined; meter: string; subjectRef: string; period: string },
+  opts: { limit?: number | undefined } = {},
 ): UsageView {
   const raw = useQuery(usageRef, args);
   const view: UsageView = {
@@ -72,10 +72,10 @@ export function useUsageList(
   listUsageRef: FunctionReference<
     "query",
     "public",
-    { scope?: string; meter: string; subjectRef: string },
+    { scope?: string | undefined; meter: string; subjectRef: string },
     UsageEntry[]
   >,
-  args: { scope?: string; meter: string; subjectRef: string },
+  args: { scope?: string | undefined; meter: string; subjectRef: string },
 ): UsageEntry[] | undefined {
   return useQuery(listUsageRef, args);
 }

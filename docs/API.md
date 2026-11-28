@@ -29,6 +29,11 @@ All methods take the host `ctx` as the first argument: mutation methods need a
 mutation or action `ctx` (`runMutation`); query methods take any `ctx` with
 `runQuery`.
 
+**Optional fields accept `undefined`.** Every optional option field (`period?`,
+`scope?`, `actorRef?`, …) is typed `?: T | undefined`, so a host compiled with
+`exactOptionalPropertyTypes` can pass its own optional args straight through;
+an `undefined` field behaves as if it were omitted.
+
 **Periods are host-owned.** A `period` is an opaque string you choose
 (`"2026-06"`, `"2026-W24"`). The component never parses dates, so the calendar
 and timezone are entirely yours.
