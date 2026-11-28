@@ -74,10 +74,10 @@ nothing. Keys survive `reset`, `eraseSubject` and `pruneRecords`; only
 **String length cap.** `defineMeter`, `record`, `recordWithLimit` and `adjust`
 reject a string argument longer than 256 UTF-16 code units (JavaScript
 `.length`; an emoji outside the Basic Multilingual Plane counts as 2) with
-`INVALID_ARGUMENT`. Queries
-and `closePeriod`, `reset`, `eraseSubject`, `pruneRecords` and `pruneSeen` are
-not capped, so a row an older version stored with a longer value stays readable
-and erasable, but `record`, `recordWithLimit` and `adjust` into it throw.
+`INVALID_ARGUMENT`. Queries and `closePeriod`, `reset`, `eraseSubject`,
+`pruneRecords` and `pruneSeen` are not capped, so a row an older version stored
+with a longer value stays readable and erasable, but recording, adjusting or
+redefining (`defineMeter`) it throws.
 
 ### `defineMeter`
 

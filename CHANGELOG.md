@@ -32,11 +32,17 @@ All notable changes to this project are documented here. The format is based on
   (`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey`, `actorRef`) reject a string longer
   than 256 UTF-16 code units (JavaScript `.length`) with `ConvexError({ code: "INVALID_ARGUMENT" })`
   (`<name> must be at most 256 characters`), bounding stored row and index-key size. Keep these
-  identifiers at most 256 characters, or hash longer ones in the host. Rows an older version stored
-  with a longer value stay readable (`getMeter`, `listMeters`, `usage`, `listUsage`,
-  `listSubjectUsage`, `verify`) and erasable (`closePeriod`, `reset`, `eraseSubject`, `pruneRecords`,
-  `pruneSeen` are not capped), but recording or adjusting into them throws, so move that usage to a
-  shorter meter key or subject.
+  identifiers at most 256 characters, or hash longer ones in the host. For `idempotencyKey`, hash
+  only keys of new events: a retry of an event first recorded with a longer key throws
+  `INVALID_ARGUMENT`; treat that as already counted, or wait until such retries stop, before
+  switching to hashed keys, since a hashed key does not match the stored one and would count the
+  event again. Rows an older version stored with a longer value stay readable (`getMeter`,
+  `listMeters`, `usage`, `listUsage`, `listSubjectUsage`, `verify`) and erasable (`closePeriod`,
+  `reset`, `eraseSubject`, `pruneRecords`, `pruneSeen` are not capped), but recording, adjusting or
+  redefining (`defineMeter`) them throws, so move that usage to a shorter meter key or subject.
+  Switch at a period boundary, or add both rollups together when billing or enforcing a limit for
+  that period: the old and new rollups are separate rows, `recordWithLimit` checks only the new one,
+  and `usage` and `closePeriod` see only one.
 - **Breaking:** `engines.node` is now `>=20` (was `>=18`), the minimum the lowest supported `convex`
   peer (1.45.0) declares.
 - README "Testing" and `docs/API.md` (`register`) now give the test tooling install command

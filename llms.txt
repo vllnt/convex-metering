@@ -24,7 +24,8 @@ and reschedule while full. `pruneRecords` and `pruneSeen` span every scope. List
 `verify` are not paginated. Errors are `ConvexError` with `data.code`. `defineMeter`, `record`,
 `recordWithLimit` and `adjust` reject an empty string argument or one longer than 256 UTF-16 code
 units (`INVALID_ARGUMENT`); queries and `closePeriod`, `reset`, `eraseSubject`, `pruneRecords`,
-`pruneSeen` are not capped, so older longer rows stay readable and erasable. The host owns auth,
+`pruneSeen` are not capped, so older longer rows stay readable and erasable, but recording,
+adjusting or redefining (`defineMeter`) them throws. The host owns auth,
 `subjectRef`, `period`, pricing and retention; scopes are not authorization.
 
 ## When to use

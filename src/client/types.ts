@@ -6,13 +6,15 @@ export type Aggregation = "sum" | "max" | "last";
 /** Construction options for the {@link Metering} client. */
 export interface MeteringOptions {
   /**
-   * Namespace applied when a call omits `scope`. Default `"global"`.
-   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   * Namespace applied when a call omits `scope`. Default `"global"`. A value longer
+   * than 256 UTF-16 code units makes `defineMeter`, `record`, `recordWithLimit` and
+   * `adjust` throw `INVALID_ARGUMENT`.
    */
   defaultScope?: string | undefined;
   /**
-   * Period bucket applied when a call omits `period`. Default `"all"`.
-   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   * Period bucket applied when a call omits `period`. Default `"all"`. A value longer
+   * than 256 UTF-16 code units makes `record`, `recordWithLimit` and `adjust` throw
+   * `INVALID_ARGUMENT`.
    */
   defaultPeriod?: string | undefined;
 }

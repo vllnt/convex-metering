@@ -127,7 +127,8 @@ authenticated — a caller can read/write any subject's usage, so the host MUST 
   and `adjust` reject a string argument longer than 256 UTF-16 code units (`.length`,
   `INVALID_ARGUMENT`), bounding row and index-key size. Queries and `closePeriod`/`reset`/
   `eraseSubject`/prune are deliberately uncapped so a host can still read and erase (GDPR) rows an
-  older version stored with longer values.
+  older version stored with longer values; recording, adjusting or redefining (`defineMeter`) them
+  throws.
 
 - **`period` is a host-supplied opaque string:** the component never parses dates — locale/calendar-agnostic.
 
