@@ -5,9 +5,15 @@ export type Aggregation = "sum" | "max" | "last";
 
 /** Construction options for the {@link Metering} client. */
 export interface MeteringOptions {
-  /** Namespace applied when a call omits `scope`. Default `"global"`. */
+  /**
+   * Namespace applied when a call omits `scope`. Default `"global"`.
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   defaultScope?: string | undefined;
-  /** Period bucket applied when a call omits `period`. Default `"all"`. */
+  /**
+   * Period bucket applied when a call omits `period`. Default `"all"`.
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   defaultPeriod?: string | undefined;
 }
 
@@ -15,21 +21,39 @@ export interface MeteringOptions {
 export interface DefineMeterOptions {
   /** Aggregation rule for this meter. Default `"sum"`. */
   aggregation?: Aggregation | undefined;
-  /** Display unit label (e.g. `"requests"`, `"GB"`). Default `""`. */
+  /**
+   * Display unit label (e.g. `"requests"`, `"GB"`). Default `""`.
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   unit?: string | undefined;
-  /** Namespace for this meter. Defaults to the client `defaultScope`. */
+  /**
+   * Namespace for this meter. Defaults to the client `defaultScope`.
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   scope?: string | undefined;
 }
 
 /** Per-call options for {@link Metering.record} / {@link Metering.recordWithLimit}. */
 export interface RecordOptions {
-  /** Period bucket (opaque host string). Defaults to the client `defaultPeriod`. */
+  /**
+   * Period bucket (opaque host string). Defaults to the client `defaultPeriod`.
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   period?: string | undefined;
-  /** Idempotency key — a repeat with the same key is a no-op (sum meters only). */
+  /**
+   * Idempotency key — a repeat with the same key is a no-op (sum meters only).
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   idempotencyKey?: string | undefined;
-  /** Opaque actor ref stored on the record for the billing audit trail. */
+  /**
+   * Opaque actor ref stored on the record for the billing audit trail.
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   actorRef?: string | undefined;
-  /** Namespace. Defaults to the client `defaultScope`. */
+  /**
+   * Namespace. Defaults to the client `defaultScope`.
+   * At most 256 UTF-16 code units (`INVALID_ARGUMENT`).
+   */
   scope?: string | undefined;
 }
 

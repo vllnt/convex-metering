@@ -55,8 +55,24 @@ function guardOpen(rollup: Doc<"rollups"> | null): void {
   }
 }
 
-/** Reject any empty-string argument (a likely host bug that would silently bucket usage together). */
-function guardNonEmpty(fields: Record<string, unknown>): void {
+/** The longest accepted string argument, counted in UTF-16 code units (JavaScript `.length`). */
+const MAX_STRING_LENGTH = 256;
+
+/** Reject a string argument longer than `MAX_STRING_LENGTH` (bounds stored row and index-key size). */
+function guardLength(name: string, value: unknown): void {
+  if (typeof value === "string" && value.length > MAX_STRING_LENGTH) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `${name} must be at most ${String(MAX_STRING_LENGTH)} characters`,
+    });
+  }
+}
+
+/**
+ * Reject an empty string argument (a likely host bug that would silently bucket usage
+ * together) or one longer than `MAX_STRING_LENGTH`.
+ */
+function guardStrings(fields: Record<string, unknown>): void {
   for (const [name, value] of Object.entries(fields)) {
     if (value === "") {
       throw new ConvexError({
@@ -64,6 +80,7 @@ function guardNonEmpty(fields: Record<string, unknown>): void {
         message: `${name} must not be an empty string`,
       });
     }
+    guardLength(name, value);
   }
 }
 
@@ -143,6 +160,8 @@ async function dedupe(
  * for the meter — switching `sum`→`max` mid-flight would leave the rollup computed
  * under two rules. Returns `{ created }`. Time is server-sourced.
  *
+ * @throws `ConvexError({ code: "INVALID_ARGUMENT" })` for an empty `scope` or `key`,
+ *   or a `scope`, `key` or `unit` longer than 256 UTF-16 code units.
  * @throws `ConvexError({ code: "AGGREGATION_LOCKED" })` on an aggregation change
  *   after usage has been recorded — define a new meter key instead.
  */
@@ -150,7 +169,8 @@ export const defineMeter = mutation({
   args: { scope: v.string(), key: v.string(), aggregation, unit: v.string() },
   returns: v.object({ created: v.boolean() }),
   handler: async (ctx, args) => {
-    guardNonEmpty({ scope: args.scope, key: args.key });
+    guardStrings({ scope: args.scope, key: args.key });
+    guardLength("unit", args.unit);
     const existing = await ctx.db
       .query("meters")
       .withIndex("by_scope_key", (q) =>
@@ -198,7 +218,8 @@ export const defineMeter = mutation({
  * when the `idempotencyKey` was already seen — a retried `record` is a safe no-op,
  * and the dedup survives `pruneRecords`. Time is server-sourced.
  *
- * @throws `INVALID_QUANTITY` (negative/non-finite), `METER_NOT_FOUND`,
+ * @throws `INVALID_QUANTITY` (negative/non-finite), `INVALID_ARGUMENT` (an empty
+ *   string argument, or one longer than 256 UTF-16 code units), `METER_NOT_FOUND`,
  *   `IDEMPOTENCY_NOT_SUPPORTED` (an `idempotencyKey` on a non-`sum` gauge meter),
  *   `PERIOD_CLOSED` (the period was frozen by `closePeriod`).
  */
@@ -220,7 +241,7 @@ export const record = mutation({
         message: "quantity must be a non-negative finite number",
       });
     }
-    guardNonEmpty(args);
+    guardStrings(args);
     const meter = await loadMeter(ctx, args.scope, args.meter);
     if (args.idempotencyKey !== undefined && meter.aggregation !== "sum") {
       throw new ConvexError({
@@ -300,7 +321,7 @@ export const recordWithLimit = mutation({
         message: "limit must be a non-negative finite number",
       });
     }
-    guardNonEmpty(args);
+    guardStrings(args);
     const meter = await loadMeter(ctx, args.scope, args.meter);
     if (args.idempotencyKey !== undefined && meter.aggregation !== "sum") {
       throw new ConvexError({
@@ -369,7 +390,8 @@ export const recordWithLimit = mutation({
  * re-folding. The rollup never goes negative.
  * Idempotent via `idempotencyKey`. Time is server-sourced.
  *
- * @throws `INVALID_QUANTITY` (non-finite delta), `METER_NOT_FOUND`,
+ * @throws `INVALID_QUANTITY` (non-finite delta), `INVALID_ARGUMENT` (as `record`),
+ *   `METER_NOT_FOUND`,
  *   `ADJUST_REQUIRES_SUM` (non-`sum` meter), `PERIOD_CLOSED`, `ADJUST_BELOW_ZERO`
  *   (the correction would make the rollup negative).
  */
@@ -391,7 +413,7 @@ export const adjust = mutation({
         message: "delta must be a finite number",
       });
     }
-    guardNonEmpty(args);
+    guardStrings(args);
     const meter = await loadMeter(ctx, args.scope, args.meter);
     if (meter.aggregation !== "sum") {
       throw new ConvexError({

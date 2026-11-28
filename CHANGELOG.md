@@ -28,6 +28,17 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Breaking:** `defineMeter` (`scope`, `key`, `unit`) and `record`, `recordWithLimit` and `adjust`
+  (`scope`, `meter`, `subjectRef`, `period`, `idempotencyKey`, `actorRef`) reject a string longer
+  than 256 UTF-16 code units (JavaScript `.length`) with `ConvexError({ code: "INVALID_ARGUMENT" })`
+  (`<name> must be at most 256 characters`), bounding stored row and index-key size. Keep these
+  identifiers at most 256 characters, or hash longer ones in the host. Rows an older version stored
+  with a longer value stay readable (`getMeter`, `listMeters`, `usage`, `listUsage`,
+  `listSubjectUsage`, `verify`) and erasable (`closePeriod`, `reset`, `eraseSubject`, `pruneRecords`,
+  `pruneSeen` are not capped), but recording or adjusting into them throws, so move that usage to a
+  shorter meter key or subject.
+- **Breaking:** `engines.node` is now `>=20` (was `>=18`), the minimum the lowest supported `convex`
+  peer (1.45.0) declares.
 - README "Testing" and `docs/API.md` (`register`) now give the test tooling install command
   (`pnpm add -D convex-test vitest vite @edge-runtime/vm`) and the Vitest `edge-runtime` config;
   "Compatibility" notes that `convex-test` 0.0.72+ needs `convex@^1.46.0`, so hosts on convex 1.45.x

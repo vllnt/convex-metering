@@ -367,6 +367,7 @@ them in the host with `error instanceof ConvexError` and read `error.data.code`.
 | Code | Message | Cause | Fix |
 | --- | --- | --- | --- |
 | `INVALID_ARGUMENT` | `<name> must not be an empty string` | `defineMeter` got an empty `scope` or `key`; `record`, `recordWithLimit` or `adjust` got an empty `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or `actorRef` | Pass non-empty strings; omit an optional field instead of passing `""`; check that `defaultScope` and `defaultPeriod` are not `""` |
+| `INVALID_ARGUMENT` | `<name> must be at most 256 characters` | `defineMeter` got a `scope`, `key` or `unit` longer than 256 UTF-16 code units; `record`, `recordWithLimit` or `adjust` got a longer `scope`, `meter`, `subjectRef`, `period`, `idempotencyKey` or `actorRef`, including a call into a row stored by an older version with a longer value | Keep identifiers at most 256 characters, or hash longer ones in the host; move usage on an old long row to a shorter meter key or subject |
 | `INVALID_QUANTITY` | `quantity must be a non-negative finite number` | `record` or `recordWithLimit` got a negative, `NaN` or infinite `quantity` | Pass a finite number `>= 0`; post negative corrections with `adjust` |
 | `INVALID_QUANTITY` | `delta must be a finite number` | `adjust` got a `NaN` or infinite `delta` | Pass a finite `delta` |
 | `INVALID_LIMIT` | `limit must be a non-negative finite number` | `recordWithLimit` got a negative, `NaN` or infinite `limit` | Pass a finite number `>= 0` |
@@ -436,8 +437,14 @@ the limit returns `{ recorded: false, reason: "limit_exceeded", value, limit }`.
   document, so concurrent writes to it serialize.
 - Timestamps (`createdAt`, record and key times) come from the server clock; no
   method accepts a caller timestamp. `before` compares against them in ms.
-- The component sets no maximum length for keys, scopes, `subjectRef` or
-  `period`; Convex value limits apply.
+- `defineMeter`, `record`, `recordWithLimit` and `adjust` cap every string
+  argument (`scope`, `key`/`meter`, `unit`, `subjectRef`, `period`,
+  `idempotencyKey`, `actorRef`) at 256 UTF-16 code units (JavaScript `.length`),
+  else `INVALID_ARGUMENT`. An emoji outside the Basic Multilingual Plane counts
+  as 2 and an accented letter such as `"é"` as 1. The
+  queries and `closePeriod`, `reset`, `eraseSubject`, `pruneRecords` and
+  `pruneSeen` are not capped, so rows an older version stored with a longer value
+  stay readable and erasable; recording or adjusting into them throws.
 
 ## Compatibility
 
@@ -445,8 +452,8 @@ the limit returns `{ recorded: false, reason: "limit_exceeded", value, limit }`.
   convex 1.51.
 - `react >=18` is an optional peer dependency, needed only for
   `@vllnt/convex-metering/react` (which also imports `convex/react`).
-- Node.js `>=18` (`engines.node`). The `convex` peer needs a newer Node:
-  1.45 needs `>=20`, 1.51 needs `>=22` (`npm view convex@1.51.0 engines`).
+- Node.js `>=20` (`engines.node`), the minimum of `convex` 1.45; `convex` 1.51
+  needs `>=22` (`npm view convex@1.51.0 engines`).
 - ES modules only (`"type": "module"`); no CommonJS build ships.
 - `@vllnt/convex-metering/test` ships as TypeScript source (`src/test.ts`) and
   needs `convex-test` and Vite's `import.meta.glob` (for example through
